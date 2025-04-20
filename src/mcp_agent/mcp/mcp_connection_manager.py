@@ -4,6 +4,7 @@ Manages the lifecycle of multiple MCP server connections.
 
 import asyncio
 import traceback
+import contextlib
 from datetime import timedelta
 from typing import (
     TYPE_CHECKING,
@@ -17,6 +18,8 @@ from anyio import Event, Lock, create_task_group
 from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from mcp.client.streamable import streamable_client, _is_old_sse_server
+
 from mcp.client.stdio import (
     StdioServerParameters,
     get_default_environment,
@@ -152,23 +155,27 @@ class ServerConnection:
         return session
 
 
-async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
-    """
-    Manage the lifecycle of a single server connection.
-    Runs inside the MCPConnectionManager's shared TaskGroup.
-    """
-    server_name = server_conn.server_name
-    try:
-        transport_context = server_conn._transport_context_factory()
 
-        async with transport_context as (read_stream, write_stream):
-            #      try:
+async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
+    server_name = server_conn.server_name
+    transport_cm = server_conn._transport_context_factory()  # the streamable_client async CM
+
+    try:
+        async with contextlib.AsyncExitStack() as stack:
+            # 1. Open the transport, receiving read/write streams
+            read_stream, write_stream = await stack.enter_async_context(transport_cm)
+
+            # 2. Bind these streams into the session object
             server_conn.create_session(read_stream, write_stream)
 
-            async with server_conn.session:
-                await server_conn.initialize_session()
+            #  4. Now open the session’s async CM for shutdown handling
+            await stack.enter_async_context(server_conn.session)
 
-                await server_conn.wait_for_shutdown_request()
+            # 3. Perform initialization write *before* closing transport
+            await server_conn.initialize_session()
+
+            # 5. Wait for shutdown; both contexts remain open throughout
+            await server_conn.wait_for_shutdown_request()
 
     except Exception as exc:
         logger.error(
@@ -181,10 +188,7 @@ async def _server_lifecycle_task(server_conn: ServerConnection) -> None:
         )
         server_conn._error_occurred = True
         server_conn._error_message = traceback.format_exception(exc)
-        # If there's an error, we should also set the event so that
-        # 'get_server' won't hang
         server_conn._initialized_event.set()
-        # No raise - allow graceful exit
 
 
 class MCPConnectionManager(ContextDependent):
@@ -275,6 +279,11 @@ class MCPConnectionManager(ContextDependent):
                     config.url,
                     config.headers,
                     sse_read_timeout=config.read_transport_sse_timeout_seconds,
+                )
+            elif config.transport == "streamable":
+                return streamable_client(
+                    config.url,
+                    config.headers,
                 )
             else:
                 raise ValueError(f"Unsupported transport: {config.transport}")
