@@ -34,6 +34,9 @@ logger:
 # MCP Servers
 mcp:
     servers:
-        everything:
-            transport: "streamable"
-            url: "http://localhost:3001/mcp"
+        tectonic:
+            command: "uv"
+            args: ["--directory","/home/therm/src/tectonic-mcp-server","run","tectonic-mcp.py"]
+        # everything:
+        #     transport: "streamable"
+        #     url: "http://localhost:3001/mcp"

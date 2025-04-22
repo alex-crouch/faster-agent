@@ -195,3 +195,5 @@ tests/integration/prompt-state/multipart.json
 tests/integration/prompt-state/history.json
 !tests/integration/api/fastagent.secrets.yaml
 fastagent.jsonl
+logfile.jsonl
+diagram-generator.py

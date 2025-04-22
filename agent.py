@@ -6,7 +6,7 @@ fast = FastAgent("fast-agent example")
 
 
 # Define the agent
-@fast.agent(instruction="You are a helpful AI Agent", servers=["everything"])
+@fast.agent(instruction="You are a helpful AI Agent", servers=["tectonic"])
 async def main():
     # use the --model command line switch or agent arguments to change model
     async with fast.run() as agent:
