@@ -1,0 +1,36 @@
+# FastAgent configuration referencing SQLite database for MCP servers
+
+default_model: openai.gpt-4.1-nano
+
+# Logging and Console Configuration:
+logger:
+    # level: "debug" | "info" | "warning" | "error"
+    level: "debug"
+    # type: "none" | "console" | "file" | "http"
+    type: "file"
+    path: "logfile.jsonl"
+
+    
+    # Switch the progress display on or off
+    progress_display: true
+
+    # Show chat User/Assistant messages on the console
+    show_chat: true
+    # Show tool calls on the console
+    show_tools: true
+    # Truncate long tool responses on the console 
+    truncate_tools: true
+
+mcp:
+  # Path to the SQLite database file containing server configurations
+  database_path: "./mcp_servers.db"
+  
+  # You can also mix database-loaded servers with traditionally configured servers
+  # servers:
+  #   everything:
+  #     command: "npx"
+  #     args: ["-y", "@modelcontextprotocol/server-everything"]
+
+  #   fetch:
+  #     command: "uvx"
+  #     args: ["mcp-server-fetch"]

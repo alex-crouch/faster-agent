@@ -9,6 +9,9 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+import sqlite3
+import json
+
 
 class MCPServerAuthSettings(BaseModel):
     """Represents authentication configuration for a server."""
@@ -253,6 +256,9 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )  # Customize the behavior of settings here
 
+    database: str | None = None
+    """Path to SQLite database containing server configurations"""
+
     mcp: MCPSettings | None = MCPSettings()
     """MCP config, such as MCP servers"""
 
@@ -311,6 +317,67 @@ class Settings(BaseSettings):
 _settings: Settings | None = None
 
 
+def load_servers_from_db(db_path: str) -> dict:
+    """
+    Load server configurations from the SQLite database and return a nested dictionary.
+
+    Args:
+        db_path (str): Path to the SQLite database file.
+
+    Returns:
+        dict: A nested dictionary with the structure {'mcp': {'servers': {...}}}.
+    """
+    # Connect to the SQLite database
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row  # Enable accessing columns by name
+    cursor = conn.cursor()
+
+    # Fetch all server configurations
+    cursor.execute("SELECT * FROM mcp_servers")
+    servers = cursor.fetchall()
+
+    # Fetch all server roots
+    cursor.execute("SELECT * FROM server_roots")
+    roots = cursor.fetchall()
+
+    # Close the database connection
+    conn.close()
+
+    # Organise roots by server name without using defaultdict
+    roots_by_server = {}
+    for root in roots:
+        root_data = dict(root)
+        server_name = root_data.pop("server_name")
+        if server_name not in roots_by_server:
+            roots_by_server[server_name] = []
+        roots_by_server[server_name].append(root_data)
+
+    # Construct the nested dictionary
+    servers_dict = {}
+    for server in servers:
+        server_data = dict(server)
+
+        # Parse JSON fields
+        args = json.loads(server_data["args"]) if server_data["args"] else None
+
+        # Build the server configuration dictionary
+        server_config = {}
+        if server_data["command"]:
+            server_config["command"] = server_data["command"]
+        if args is not None:
+            server_config["args"] = args
+
+        # Add roots if available
+        server_name = server_data["name"]
+        roots_data = roots_by_server.get(server_name)
+        if roots_data:
+            server_config["roots"] = roots_data
+
+        servers_dict[server_data["name"]] = server_config
+
+    return {"mcp": {"servers": servers_dict}}
+
+
 def get_settings(config_path: str | None = None) -> Settings:
     """Get settings instance, automatically loading from config file if available."""
 
@@ -366,6 +433,10 @@ def get_settings(config_path: str | None = None) -> Settings:
             # Start with the absolute path of the config file's directory
             current_dir = config_file.parent.resolve()
 
+            if merged_settings["database"]:
+                database_settings = load_servers_from_db(merged_settings["database"])
+                merged_settings = deep_merge(merged_settings, database_settings)
+
             while current_dir != current_dir.parent and not found_secrets:
                 for secrets_filename in [
                     "fastagent.secrets.yaml",
@@ -380,7 +451,6 @@ def get_settings(config_path: str | None = None) -> Settings:
                 if not found_secrets:
                     # Get the absolute path of the parent directory
                     current_dir = current_dir.parent.resolve()
-
             _settings = Settings(**merged_settings)
             return _settings
     else:

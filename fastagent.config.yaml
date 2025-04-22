@@ -32,11 +32,19 @@ logger:
     truncate_tools: true
 
 # MCP Servers
+database: "./examples/sqlite_servers/mcp_servers.db"
+
 mcp:
     servers:
         tectonic:
             command: "uv"
             args: ["--directory","/home/therm/src/tectonic-mcp-server","run","tectonic-mcp.py"]
+        # fetch:
+        #     command: "uvx"
+        #     args: ["mcp-server-fetch"]
+        # everything:
+        #     command: "npx"
+        #     args: ["-y", "@modelcontextprotocol/server-everything"]
         # everything:
         #     transport: "streamable"
         #     url: "http://localhost:3001/mcp"
