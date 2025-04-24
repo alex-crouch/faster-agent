@@ -7,6 +7,16 @@
 <a href="https://github.com/evalstate/fast-agent-mcp/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/fast-agent-mcp" /></a>
 </p>
 
+## faster Changes
+> [!TIP]
+> Streamable HTTP Support
+
+> [!TIP]
+> SQL database support
+
+> [!TIP]
+> qdrant database support
+
 ## Overview
 
 > [!TIP]

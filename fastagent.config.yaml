@@ -32,7 +32,9 @@ logger:
     truncate_tools: true
 
 # MCP Servers
-database: "./examples/sqlite_servers/mcp_servers.db"
+# database: "./examples/sqlite_servers/mcp_servers.db"
+
+qdrant_url: "http://192.168.194.33:6333"
 
 mcp:
     servers:

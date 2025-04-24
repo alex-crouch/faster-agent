@@ -4,11 +4,12 @@ for the application configuration.
 """
 
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional, Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from qdrant_client import QdrantClient, models
 import sqlite3
 import json
 
@@ -259,6 +260,9 @@ class Settings(BaseSettings):
     database: str | None = None
     """Path to SQLite database containing server configurations"""
 
+    qdrant_url: str | None = None
+    """URL for Qdrant server"""
+
     mcp: MCPSettings | None = MCPSettings()
     """MCP config, such as MCP servers"""
 
@@ -316,6 +320,98 @@ class Settings(BaseSettings):
 # Global settings object
 _settings: Settings | None = None
 
+def load_servers_from_qdrant(qdrant_url: str, collection_name: str = "mcp_servers") -> Dict[str, Any]:
+    """
+    Load server configurations from the Qdrant collection and return a nested dictionary.
+
+    Args:
+        client (QdrantClient): An initialized Qdrant client instance.
+        collection_name (str): The name of the Qdrant collection storing server data.
+
+    Returns:
+        dict: A nested dictionary with the structure {'mcp': {'servers': {...}}}.
+              Returns empty structure if collection doesn't exist or is empty.
+    """
+    servers_dict: Dict[str, Any] = {}
+
+    client = QdrantClient(url=qdrant_url)
+    try:
+        # Scroll through all points in the collection
+        # Use a loop with offset if the collection is very large
+        scroll_result = client.scroll(
+            collection_name=collection_name,
+            limit=1000,  # Adjust limit as needed, or loop with offset
+            with_payload=True,
+            with_vectors=False # We don't need vectors for this task
+        )
+
+        points = scroll_result[0] # scroll_result is a tuple (points, next_offset)
+
+        # If you need to handle more points than the limit:
+        # next_offset = scroll_result[1]
+        # while next_offset:
+        #     scroll_result = client.scroll(
+        #         collection_name=collection_name,
+        #         limit=1000,
+        #         offset=next_offset,
+        #         with_payload=True,
+        #         with_vectors=False
+        #     )
+        #     points.extend(scroll_result[0])
+        #     next_offset = scroll_result[1]
+
+
+        for point in points:
+            payload = point.payload # Payload is already a dictionary
+
+            if not payload or 'name' not in payload:
+                print(f"Warning: Skipping point ID {point.id} due to missing payload or name.")
+                continue
+
+            server_name = payload['name']
+            server_config: Dict[str, Any] = {}
+
+            # Directly access payload fields. Qdrant handles JSON parsing on storage/retrieval.
+            if payload.get("command"):
+                server_config["command"] = payload["command"]
+            if payload.get("args") is not None: # Check for existence and not None
+                server_config["args"] = payload["args"] # Should already be a list
+
+            # Add other relevant fields from payload to server_config if needed
+            # e.g., url, headers, api_key, timeouts etc.
+            # if payload.get("url"):
+            #     server_config["url"] = payload["url"]
+            # if payload.get("headers"): # Should be a dict
+            #     server_config["headers"] = payload["headers"]
+            # ... add other fields as required by your application logic ...
+
+
+            # Add roots if available in the payload
+            roots_data = payload.get("roots") # Should be a list of dicts
+            if roots_data:
+                # We might not need the 'id' from the original server_roots table here,
+                # depending on requirements. Let's exclude it for simplicity matching the original output.
+                formatted_roots = []
+                for root in roots_data:
+                    # Create a copy to avoid modifying the original payload dict if needed elsewhere
+                    root_copy = root.copy()
+                    # Remove fields not present in the original function's root dicts if necessary
+                    # root_copy.pop("id", None) # Example if 'id' was stored but not needed
+                    # root_copy.pop("server_name", None) # This shouldn't be here if embedded correctly
+                    formatted_roots.append(root_copy)
+                server_config["roots"] = formatted_roots
+
+
+            servers_dict[server_name] = server_config
+
+    except Exception as e:
+        # Handle potential errors like collection not found, connection issues etc.
+        print(f"Error loading servers from Qdrant collection '{collection_name}': {e}")
+        # Depending on requirements, you might want to raise the exception
+        # or return the partially loaded dict or an empty dict.
+        return {"mcp": {"servers": {}}} # Return empty structure on error
+
+    return {"mcp": {"servers": servers_dict}}
 
 def load_servers_from_db(db_path: str) -> dict:
     """
@@ -433,9 +529,21 @@ def get_settings(config_path: str | None = None) -> Settings:
             # Start with the absolute path of the config file's directory
             current_dir = config_file.parent.resolve()
 
-            if merged_settings["database"]:
-                database_settings = load_servers_from_db(merged_settings["database"])
-                merged_settings = deep_merge(merged_settings, database_settings)
+            try:
+                if merged_settings["database"] is not None:
+                    database_settings = load_servers_from_db(merged_settings["database"])
+                    merged_settings = deep_merge(merged_settings, database_settings)
+            except: # update to actual exception
+                print(f"Warning: Failed to load database settings")
+                pass
+
+            try:
+                if merged_settings["qdrant_url"]:
+                    qdrant_settings = load_servers_from_qdrant(merged_settings["qdrant_url"])
+                    merged_settings = deep_merge(merged_settings, qdrant_settings)
+            except: # update to actual exception
+                print(f"Warning: Failed to load qdrant settings")
+                pass
 
             while current_dir != current_dir.parent and not found_secrets:
                 for secrets_filename in [
