@@ -402,6 +402,7 @@ def load_servers_from_qdrant(
                     formatted_roots.append(root_copy)
                 server_config["roots"] = formatted_roots
 
+            print(server_config)
             servers_dict[server_name] = server_config
 
     except Exception as e:

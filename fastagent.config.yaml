@@ -34,16 +34,27 @@ logger:
 # MCP Servers
 # database: "./examples/sqlite_servers/mcp_servers.db"
 
-qdrant_url: "http://192.168.194.33:6333"
+# qdrant_url: "http://192.168.194.33:6333"
 
 mcp:
     servers:
-        tectonic:
-            command: "uv"
-            args: ["--directory","/home/therm/src/tectonic-mcp-server","run","tectonic-mcp.py"]
-        # fetch:
-        #     command: "uvx"
-        #     args: ["mcp-server-fetch"]
+        playwright:
+            transport: "sse"
+            url: "http://192.168.194.33:8111/sse"
+            # command: "npx"
+            # args: [ "@playwright/mcp@latest", "--headless"]
+
+        searxng:
+            command: "uvx"
+            args: ["mcp-searxng"]
+            env:
+                SEARXNG_URL: "http://192.168.194.33:8060"
+        # tectonic:
+        #     command: "uv"
+        #     args: ["--directory","/home/therm/src/tectonic-mcp-server","run","tectonic-mcp.py"]
+        fetch:
+            command: "uvx"
+            args: ["mcp-server-fetch"]
         # everything:
         #     command: "npx"
         #     args: ["-y", "@modelcontextprotocol/server-everything"]
