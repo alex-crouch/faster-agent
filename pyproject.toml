@@ -5,13 +5,13 @@ description = "Define, Prompt and Test MCP enabled Agents and Workflows"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Shaun Smith", email = "fastagent@llmindset.co.uk"},
-    { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" }
+    { name = "Shaun Smith", email = "fastagent@llmindset.co.uk" },
+    { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
-    "Operating System :: OS Independent"
+    "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -32,12 +32,11 @@ dependencies = [
     "aiohttp>=3.11.13",
     "a2a-types>=0.1.0",
     "pysqlite3>=0.5.4",
+    "qdrant_client",
 ]
 
 [project.optional-dependencies]
-openai = [
-    "openai>=1.58.1",
-]
+openai = ["openai>=1.58.1"]
 dev = [
     "anthropic>=0.42.0",
     "pre-commit>=4.0.1",
@@ -63,8 +62,8 @@ include = [
     "src/mcp_agent/**/*.yaml",
     "src/mcp_agent/**/*.yml",
     "src/mcp_agent/**/*.csv",
-    "src/mcp_agent/**/*.txt",    
-    "src/mcp_agent/**/*.example",    
+    "src/mcp_agent/**/*.txt",
+    "src/mcp_agent/**/*.example",
     "examples/**/*.py",
     "examples/**/*.yaml",
     "examples/**/*.yml",
@@ -88,7 +87,7 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "e2e: tests that connect to external resources (llms)",
     "integration: marks tests as integration tests",
-    "simulated_endpoints: marks tests that use simulated external endpoints"
+    "simulated_endpoints: marks tests that use simulated external endpoints",
 ]
 # Other pytest options can go here too
 testpaths = ["test", "integration_tests"]
@@ -124,10 +123,10 @@ select = [
     "E",   # pycodestyle errors
     "F",   # pyflakes
     "I",   # isort
-    "TCH"  # type checking
+    "TCH", # type checking
 ]
-ignore=["E501"]
+ignore = ["E501"]
 
 # More lenient settings for existing code
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ANN"]  # Don't require type annotations in tests
+"tests/*" = ["ANN"] # Don't require type annotations in tests

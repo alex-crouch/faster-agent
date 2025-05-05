@@ -3,7 +3,6 @@ from mcp_agent.core.fastagent import FastAgent
 
 fast = FastAgent("Planner")
 
-
 @fast.agent(
     name="planner",  # name of the agent
     instruction="""
@@ -23,7 +22,7 @@ Evaluate the response from the planning agent based on the criteria:
  - Plan Congruency. Has the planning agent correctly divided the top level plan into kernels?
  - Dependencies. Has the planning agent correctly identified the dependencies between the kernels?
  - Alignment. Has the planning agent acted and addressed feedback from any previous assessments?
- 
+
 For each criterion:
 - Provide a rating (EXCELLENT, GOOD, FAIR, or POOR).
 - Offer specific feedback or suggestions for improvement.
@@ -46,7 +45,6 @@ async def main():
         Get me the top 3 latest news stories from the New York Times news website and rewrite them in the style of gossip girl.
         """)
         # await agent.interactive()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
