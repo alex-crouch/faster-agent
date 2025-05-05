@@ -8,9 +8,7 @@ DEFAULT_DEEPSEEK_MODEL = "deepseekchat"  # current Deepseek only has two type mo
 
 class DeepSeekAugmentedLLM(OpenAIAugmentedLLM):
     def __init__(self, *args, **kwargs) -> None:
-        super().__init__(
-            *args, provider=Provider.DEEPSEEK, **kwargs
-        )  # Properly pass args and kwargs to parent
+        super().__init__(*args, provider=Provider.DEEPSEEK, **kwargs)
 
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize Deepseek-specific default parameters"""

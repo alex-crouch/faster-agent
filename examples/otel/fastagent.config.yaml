@@ -5,12 +5,12 @@
 # Takes format:
 #   <provider>.<model_string>.<reasoning_effort?> (e.g. anthropic.claude-3-5-sonnet-20241022 or openai.o3-mini.low)
 # Accepts aliases for Anthropic Models: haiku, haiku3, sonnet, sonnet35, opus, opus3
-# and OpenAI Models: gpt-4o-mini, gpt-4o, o1, o1-mini, o3-mini
+# and OpenAI Models: gpt-4.1, gpt-4.1-mini, o1, o1-mini, o3-mini
 #
 # If not specified, defaults to "haiku".
 # Can be overriden with a command line switch --model=<model>, or within the Agent constructor.
 
-default_model: passthrough
+default_model: haiku
 
 # Logging and Console Configuration:
 logger:
@@ -27,11 +27,18 @@ logger:
   show_tools: true
   # Truncate long tool responses on the console
   truncate_tools: true
+
+otel:
+  enabled: true # Enable or disable OpenTelemetry
+
+# MCP Servers
 mcp:
   servers:
-    test_server:
-      command: "uv"
-      args: ["run", "test_server.py"]
-    hyphen-name:
-      command: "uv"
-      args: ["run", "test_server.py"]
+    fetch:
+      command: "uvx"
+      args: ["mcp-server-fetch"]
+    filesystem:
+      command: "npx"
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    think:
+      command: "mcp-think-tool"

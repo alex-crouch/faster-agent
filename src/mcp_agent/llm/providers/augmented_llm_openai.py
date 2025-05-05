@@ -95,7 +95,7 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
             model=chosen_model,
             systemPrompt=self.instruction,
             parallel_tool_calls=True,
-            max_iterations=10,
+            max_iterations=20,
             use_history=True,
         )
 
@@ -222,7 +222,10 @@ class OpenAIAugmentedLLM(AugmentedLLM[ChatCompletionMessageParam, ChatCompletion
                         method="tools/call",
                         params=CallToolRequestParams(
                             name=tool_call.function.name,
-                            arguments=from_json(tool_call.function.arguments, allow_partial=True),
+                            arguments={}
+                            if not tool_call.function.arguments
+                            or tool_call.function.arguments.strip() == ""
+                            else from_json(tool_call.function.arguments, allow_partial=True),
                         ),
                     )
                     result = await self.call_tool(tool_call_request, tool_call.id)

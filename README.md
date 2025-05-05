@@ -20,7 +20,7 @@
 ## Overview
 
 > [!TIP]
-> Documentation site is in production here : https://fast-agent.ai. Feel free to feed back what's helpful and what's not. llms.txt link is here: https://fast-agent.ai/llms.txt
+> Documentation site is in production here : https://fast-agent.ai. Feel free to feed back what's helpful and what's not. There is also an LLMs.txt [here](https://fast-agent.ai/llms.txt)
 
 **`fast-agent`** enables you to create and interact with sophisticated Agents and Workflows in minutes. It is the first framework with complete, end-to-end tested MCP Feature support including Sampling. Both Anthropic (Haiku, Sonnet, Opus) and OpenAI models (gpt-4o/gpt-4.1 family, o1/o3 family) are supported.
 
@@ -28,8 +28,8 @@ The simple declarative syntax lets you concentrate on composing your Prompts and
 
 `fast-agent` is multi-modal, supporting Images and PDFs for both Anthropic and OpenAI endpoints via Prompts, Resources and MCP Tool Call results. The inclusion of passthrough and playback LLMs enable rapid development and test of Python glue-code for your applications.
 
-> [!TIP]
-> `fast-agent` is now MCP Native! Coming Soon - Full Documentation Site and Further MCP Examples.
+> [!IMPORTANT]
+> `fast-agent` The fast-agent documentation repo is here: https://github.com/evalstate/fast-agent-docs. Please feel free to submit PRs for documentation, experience reports or other content you think others may find helpful. All help and feedback warmly received.
 
 ### Agent Application Development
 
@@ -219,10 +219,10 @@ If the Generator has `use_history` off, the previous iteration is returned when 
 
 ```python
 @fast.evaluator_optimizer(
-  name="researcher"
-  generator="web_searcher"
-  evaluator="quality_assurance"
-  min_rating="EXCELLENT"
+  name="researcher",
+  generator="web_searcher",
+  evaluator="quality_assurance",
+  min_rating="EXCELLENT",
   max_refinements=3
 )
 
@@ -240,8 +240,8 @@ Routers use an LLM to assess a message, and route it to the most appropriate Age
 
 ```python
 @fast.router(
-  name="route"
-  agents["agent1","agent2","agent3"]
+  name="route",
+  agents=["agent1","agent2","agent3"]
 )
 ```
 
@@ -253,7 +253,7 @@ Given a complex task, the Orchestrator uses an LLM to generate a plan to divide 
 
 ```python
 @fast.orchestrator(
-  name="orchestrate"
+  name="orchestrate",
   agents=["task1","task2","task3"]
 )
 ```
@@ -293,7 +293,7 @@ agent["greeter"].send("Good Evening!")          # Dictionary access is supported
   servers=["filesystem"],                # list of MCP Servers for the agent
   model="o3-mini.high",                  # specify a model for the agent
   use_history=True,                      # agent maintains chat history
-  request_params=RequestParams(temperature= 0.7)), # additional parameters for the LLM (or RequestParams())
+  request_params=RequestParams(temperature= 0.7), # additional parameters for the LLM (or RequestParams())
   human_input=True,                      # agent can request human input
 )
 ```
@@ -305,7 +305,7 @@ agent["greeter"].send("Good Evening!")          # Dictionary access is supported
   name="chain",                          # name of the chain
   sequence=["agent1", "agent2", ...],    # list of agents in execution order
   instruction="instruction",             # instruction to describe the chain for other workflows
-  cumulative=False                       # whether to accumulate messages through the chain
+  cumulative=False,                      # whether to accumulate messages through the chain
   continue_with_final=True,              # open chat with agent at end of chain after prompting
 )
 ```

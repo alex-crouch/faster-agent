@@ -4,11 +4,14 @@ A central context object to store global state that is shared across the applica
 
 import asyncio
 import concurrent.futures
+import uuid
 from typing import TYPE_CHECKING, Any, Optional, Union
 
 from mcp import ServerSession
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+from opentelemetry.instrumentation.openai import OpenAIInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -51,7 +54,7 @@ class Context(BaseModel):
     server_registry: Optional[ServerRegistry] = None
     task_registry: Optional[ActivityRegistry] = None
 
-    tracer: Optional[trace.Tracer] = None
+    tracer: trace.Tracer | None = None
 
     model_config = ConfigDict(
         extra="allow",
@@ -63,28 +66,27 @@ async def configure_otel(config: "Settings") -> None:
     """
     Configure OpenTelemetry based on the application config.
     """
-    if not config.otel.enabled:
-        return
-
-    # Check if a provider is already set to avoid re-initialization
-    if trace.get_tracer_provider().__class__.__name__ != "NoOpTracerProvider":
+    if not config.otel or not config.otel.enabled:
         return
 
     # Set up global textmap propagator first
     set_global_textmap(TraceContextTextMapPropagator())
 
     service_name = config.otel.service_name
-    service_instance_id = config.otel.service_instance_id
-    service_version = config.otel.service_version
+    from importlib.metadata import version
 
-    # Create resource identifying this service
+    try:
+        app_version = version("fast-agent-mcp")
+    except:  # noqa: E722
+        app_version = "unknown"
+
     resource = Resource.create(
         attributes={
             key: value
             for key, value in {
                 "service.name": service_name,
-                "service.instance.id": service_instance_id,
-                "service.version": service_version,
+                "service.instance.id": str(uuid.uuid4())[:6],
+                "service.version": app_version,
             }.items()
             if value is not None
         }
@@ -107,6 +109,8 @@ async def configure_otel(config: "Settings") -> None:
 
     # Set as global tracer provider
     trace.set_tracer_provider(tracer_provider)
+    AnthropicInstrumentor().instrument()
+    OpenAIInstrumentor().instrument()
 
 
 async def configure_logger(config: "Settings") -> None:

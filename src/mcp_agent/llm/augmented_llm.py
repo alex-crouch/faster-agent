@@ -2,6 +2,7 @@ from abc import abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
+    Dict,
     Generic,
     List,
     Optional,
@@ -59,7 +60,36 @@ if TYPE_CHECKING:
 HUMAN_INPUT_TOOL_NAME = "__human_input__"
 
 
-class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT, MessageT]):
+def deep_merge(dict1: Dict[Any, Any], dict2: Dict[Any, Any]) -> Dict[Any, Any]:
+    """
+    Recursively merges `dict2` into `dict1` in place.
+
+    If a key exists in both dictionaries and their values are dictionaries,
+    the function merges them recursively. Otherwise, the value from `dict2`
+    overwrites or is added to `dict1`.
+
+    Args:
+        dict1 (Dict): The dictionary to be updated.
+        dict2 (Dict): The dictionary to merge into `dict1`.
+
+    Returns:
+        Dict: The updated `dict1`.
+    """
+    for key in dict2:
+        if (
+            key in dict1
+            and isinstance(dict1[key], dict)
+            and isinstance(dict2[key], dict)
+        ):
+            deep_merge(dict1[key], dict2[key])
+        else:
+            dict1[key] = dict2[key]
+    return dict1
+
+
+class AugmentedLLM(
+    ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT, MessageT]
+):
     # Common parameter names used across providers
     PARAM_MESSAGES = "messages"
     PARAM_MODEL = "model"
@@ -171,6 +201,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         # We never expect this for structured() calls - this is for interactive use - developers
         # can do this programatically
         # TODO -- create a "fast-agent" control role rather than magic strings
+
         if multipart_messages[-1].first_text().startswith("***SAVE_HISTORY"):
             parts: list[str] = multipart_messages[-1].first_text().split(" ", 1)
             filename: str = (
@@ -220,6 +251,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         request_params: RequestParams | None = None,
     ) -> Tuple[ModelT | None, PromptMessageMultipart]:
         """Return a structured response from the LLM using the provided messages."""
+
         self._precall(multipart_messages)
         result, assistant_response = await self._apply_prompt_provider_specific_structured(
             multipart_messages, model, request_params
@@ -355,8 +387,10 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
     ) -> RequestParams:
         """Merge default and provided request parameters"""
 
-        merged = default_params.model_dump()
-        merged.update(provided_params.model_dump(exclude_unset=True))
+        merged = deep_merge(
+            default_params.model_dump(),
+            provided_params.model_dump(exclude_unset=True),
+        )
         final_params = RequestParams(**merged)
 
         return final_params
