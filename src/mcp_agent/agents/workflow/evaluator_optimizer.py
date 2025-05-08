@@ -21,6 +21,7 @@ from mcp_agent.core.request_params import RequestParams
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.interfaces import ModelT
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
+from pydantic.functional_validators import field_validator
 
 logger = get_logger(__name__)
 
@@ -48,11 +49,48 @@ class QualityRating(str, Enum):
 class EvaluationResult(BaseModel):
     """Model representing the evaluation result from the evaluator agent."""
 
-    rating: QualityRating = Field(description="Quality rating of the response")
-    feedback: str = Field(description="Specific feedback and suggestions for improvement")
-    needs_improvement: bool = Field(description="Whether the output needs further improvement")
+    rating: QualityRating = Field(
+        description="Quality rating of the response: 0=Major improvements needed, 1=Several improvements needed, 2=Minor improvements possible, 3=No improvements needed"
+    )
+
+    # Add a pydantic validator that maps a numeric rating to the proper enum value
+    @field_validator("rating", mode="before")
+    @classmethod
+    def validate_rating(cls, value: Any) -> QualityRating:
+        """Validate and convert numeric rating to QualityRating enum."""
+        if isinstance(value, int):
+            if value == 0:
+                return QualityRating.POOR
+            elif value == 1:
+                return QualityRating.FAIR
+            elif value == 2:
+                return QualityRating.GOOD
+            elif value == 3:
+                return QualityRating.EXCELLENT
+            else:
+                raise ValueError("Invalid rating value")
+
+        elif isinstance(value, str):
+            try:
+                return QualityRating[value.upper()]
+            except KeyError:
+                raise ValueError(
+                    f"Invalid rating string: {value}. Must be one of {list(QualityRating)}"
+                )
+        else:
+            raise ValueError(
+                f"Invalid rating type: {type(value)}. Must be int or str."
+            )
+
+    feedback: str = Field(
+        description="Specific feedback and suggestions for improvement"
+    )
+    needs_improvement: bool = Field(
+        description="Whether the output needs further improvement"
+    )
     focus_areas: List[str] = Field(
-        default_factory=list, description="Specific areas to focus on in next iteration"
+        default_factory=list,
+        description="Specific areas to focus on in next iteration",
     )
 
 

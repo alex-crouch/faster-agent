@@ -37,10 +37,10 @@ fast = FastAgent("fast-agent example")
 async def main():
     # use the --model command line switch or agent arguments to change model
     async with fast.run() as agent:
-        await agent("""
-        Get me the top 3 latest news stories from the New York Times news website and rewrite them in the style of gossip girl.
-        """)
-        # await agent.interactive()
+        # await agent("""
+        # Get me the top 3 latest news stories from the New York Times news website and rewrite them in the style of gossip girl.
+        # """)
+        await agent.interactive()
 
 
 if __name__ == "__main__":
