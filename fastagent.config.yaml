@@ -28,7 +28,7 @@ logger:
   # Show tool calls on the console
   show_tools: true
   # Truncate long tool responses on the console
-  truncate_tools: true
+  truncate_tools: false
 
 otel:
   enabled: true # Enable or disable OpenTelemetry
@@ -52,14 +52,20 @@ mcp:
     #   env:
     #     SEARXNG_URL: "http://192.168.194.33:8060"
     # tectonic:
-    #     command: "uv"
-    #     args: ["--directory","/home/therm/src/tectonic-mcp-server","run","tectonic-mcp.py"]
+    #   command: "uv"
+    #   args:
+    #     [
+    #       "--directory",
+    #       "/home/therm/src/tectonic-mcp-server",
+    #       "run",
+    #       "tectonic-mcp.py",
+    #     ]
     # fetch:
     #   command: "uvx"
     #   args: ["mcp-server-fetch"]
     # everything:
-    #     command: "npx"
-    #     args: ["-y", "@modelcontextprotocol/server-everything"]
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-everything"]
     # everything:
     #     transport: "streamable"
     #     url: "http://localhost:3001/mcp"

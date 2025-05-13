@@ -27,11 +27,28 @@ logger:
   show_tools: true
   # Truncate long tool responses on the console
   truncate_tools: true
+  enable_markup: false
+
+# MCP Servers
 mcp:
   servers:
-    test_server:
+    prompts:
+      command: "prompt-server"
+      args: ["playback.md"]
+    std_io:
       command: "uv"
-      args: ["run", "test_server.py"]
-    hyphen-name:
+      args: ["run", "integration_agent.py", "--server", "--transport", "stdio"]
+    sse:
+      transport: "sse"
+      url: "http://localhost:8723/sse"
+    card_test:
       command: "uv"
-      args: ["run", "test_server.py"]
+      args: ["run", "mcp_tools_server.py"]
+    hyphen-test:
+      command: "uv"
+      args: ["run", "mcp_tools_server.py"]
+    # borrows config from prompt-server
+    cwd_test:
+      command: "prompt-server"
+      args: ["multi.txt"]
+      cwd: "../prompt-server/"

@@ -11,6 +11,8 @@ from mcp.types import (
     TextResourceContents,
 )
 
+from mcp_agent.llm.provider_types import Provider
+from mcp_agent.llm.providers import augmented_llm_openai
 from mcp_agent.llm.providers.multipart_converter_openai import (
     OpenAIConverter,
 )
@@ -428,6 +430,15 @@ class TestOpenAIToolConverter(unittest.TestCase):
             tool_message[1][0]["content"][1]["file"]["file_data"],
             f"data:application/pdf;base64,{pdf_base64}",
         )
+
+    def test_empty_schema_behavior(self):
+        """Test adjustment of parameters for empty schema."""
+        inputSchema = {
+            "type": "object",
+        }
+        an_llm = augmented_llm_openai.OpenAIAugmentedLLM(Provider.OPENAI)
+        adjusted = an_llm.adjust_schema(inputSchema)
+        assert adjusted["properties"] == {}
 
 
 class TestTextConcatenation(unittest.TestCase):

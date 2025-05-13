@@ -62,6 +62,7 @@ class AnthropicAugmentedLLM(AugmentedLLM[MessageParam, Message]):
         AugmentedLLM.PARAM_USE_HISTORY,
         AugmentedLLM.PARAM_MAX_ITERATIONS,
         AugmentedLLM.PARAM_PARALLEL_TOOL_CALLS,
+        AugmentedLLM.PARAM_TEMPLATE_VARS,
     }
 
     def __init__(self, *args, **kwargs) -> None:

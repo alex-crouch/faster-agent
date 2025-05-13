@@ -1,13 +1,10 @@
 [project]
 name = "fast-agent-mcp"
-version = "0.2.20"
+version = "0.2.24"
 description = "Define, Prompt and Test MCP enabled Agents and Workflows"
 readme = "README.md"
 license = { file = "LICENSE" }
-authors = [
-    { name = "Shaun Smith", email = "fastagent@llmindset.co.uk" },
-    { name = "Sarmad Qadri", email = "sarmad@lastmileai.dev" },
-]
+authors = [{ name = "Shaun Smith", email = "fastagent@llmindset.co.uk" }]
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: Apache Software License",
@@ -16,7 +13,7 @@ classifiers = [
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.115.6",
-    "mcp @ git+https://github.com/alex-crouch/python-sdk.git",
+    "mcp>=1.8.0",
     "opentelemetry-distro>=0.50b0",
     "opentelemetry-exporter-otlp-proto-http>=1.29.0",
     "pydantic-settings>=2.7.0",
@@ -29,10 +26,11 @@ dependencies = [
     "prompt-toolkit>=3.0.50",
     "aiohttp>=3.11.13",
     "a2a-types>=0.1.0",
-    "pysqlite3>=0.5.4",
-    "qdrant_client",
     "opentelemetry-instrumentation-openai>=0.39.3",
     "opentelemetry-instrumentation-anthropic>=0.39.3",
+    "tensorzero>=2025.4.7",
+    "opentelemetry-instrumentation-mcp>=0.40.3",
+    "qdrant_client>=1.14.2",
 ]
 
 [project.optional-dependencies]
@@ -78,9 +76,6 @@ include = [
     "examples/mcp/**/*.example",
 ]
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
 [tool.pytest.ini_options]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
@@ -103,6 +98,7 @@ dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.1",
     "pytest-cov>=6.1.1",
+    "ipdb>=0.13.13",
 ]
 
 [project.scripts]

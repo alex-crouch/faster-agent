@@ -40,6 +40,9 @@ mcp:
     sse:
       transport: "sse"
       url: "http://localhost:8723/sse"
+    http:
+      transport: "http"
+      url: "http://localhost:8724/mcp"
     card_test:
       command: "uv"
       args: ["run", "mcp_tools_server.py"]
@@ -51,3 +54,6 @@ mcp:
       command: "prompt-server"
       args: ["multi.txt"]
       cwd: "../prompt-server/"
+    dynamic_tool:
+      command: "uv"
+      args: ["run", "mcp_dynamic_tools.py"]

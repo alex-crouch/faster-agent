@@ -76,20 +76,14 @@ def deep_merge(dict1: Dict[Any, Any], dict2: Dict[Any, Any]) -> Dict[Any, Any]:
         Dict: The updated `dict1`.
     """
     for key in dict2:
-        if (
-            key in dict1
-            and isinstance(dict1[key], dict)
-            and isinstance(dict2[key], dict)
-        ):
+        if key in dict1 and isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
             deep_merge(dict1[key], dict2[key])
         else:
             dict1[key] = dict2[key]
     return dict1
 
 
-class AugmentedLLM(
-    ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT, MessageT]
-):
+class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT, MessageT]):
     # Common parameter names used across providers
     PARAM_MESSAGES = "messages"
     PARAM_MODEL = "model"
@@ -100,7 +94,7 @@ class AugmentedLLM(
     PARAM_METADATA = "metadata"
     PARAM_USE_HISTORY = "use_history"
     PARAM_MAX_ITERATIONS = "max_iterations"
-
+    PARAM_TEMPLATE_VARS = "template_vars"
     # Base set of fields that should always be excluded
     BASE_EXCLUDE_FIELDS = {PARAM_METADATA}
 

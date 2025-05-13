@@ -2,6 +2,8 @@ import asyncio
 
 from mcp_agent.core.fastagent import FastAgent
 import json
+import os
+from datetime import datetime
 
 agents = FastAgent(name="Enhanced Planner")
 
@@ -50,6 +52,25 @@ Kernels are self-contained units of work that can be executed by a specific type
 - Be independent enough to be assigned to a specialized agent
 - Map to a well-defined agent schematic (e.g., researcher, coder, creative writer, data analyzer)
 
+WHAT ARE TOOLS:
+Tools are resources that agents can use to interact with external systems or perform specialized functions beyond basic text generation:
+- Web browsers: For accessing websites, scraping content, or performing searches
+- API clients: For making requests to external services like news sources, weather data, or social media
+- File system access: For reading from or writing to files on the host system
+- Database connectors: For querying or updating structured data stores
+- Email or messaging services: For sending communications
+- Calendar services: For viewing or modifying schedule information
+- Code interpreters: For executing code snippets or performing computations
+- Document parsers: For extracting information from PDFs, images, or other file formats
+
+Kernels typically need tools when they must:
+- Access data from external sources (web, APIs, databases)
+- Persist information beyond the conversation (file writes, database updates)
+- Perform actions in external systems (sending emails, updating calendars)
+- Process non-text information (images, audio, specialized formats)
+
+Kernels that perform purely cognitive tasks (analysis, summarization, rewriting, planning) generally don't require tools.
+
 YOUR RESPONSIBILITIES:
 1. Review the comprehensive plan provided by the TaskPlanner
 2. Group related subtasks into logical kernels based on required capabilities
@@ -59,6 +80,7 @@ YOUR RESPONSIBILITIES:
     - Establish clear success criteria
     - Identify dependencies between kernels (what must be completed before this kernel can start)
     - Note any specialized tools or knowledge required
+    - If no tools are required state explicitly "No tools are required."
 
 4. Ensure that all subtasks from the original plan are covered by the kernels
 5. Structure the kernels in a sequence that respects dependencies
@@ -80,6 +102,7 @@ OUTPUT FORMAT:
     - OUTPUTS: What this kernel will produce
     - DEPENDENCIES: Which kernels must complete before this one can start
     - SUCCESS CRITERIA: How to determine if this kernel executed successfully
+    - TOOLS REQUIRED: Are tools required
 3. Execution sequence diagram showing the flow between kernels
 
 Your goal is to transform an abstract plan into concrete, executable units of work that can be distributed to appropriate specialized agents.
@@ -127,6 +150,7 @@ Your goal is to transform an abstract plan into concrete, executable units of wo
     4. Validation Checklist:
        - Confirmation that all kernel inputs can be satisfied
        - Verification that the execution plan covers all required tasks
+       -
        - Assessment of overall plan feasibility
 
     Your goal is to ensure the kernel plan can be executed efficiently and reliably, with clear understanding of what needs to be completed before each step can begin.
@@ -150,7 +174,8 @@ Your goal is to transform an abstract plan into concrete, executable units of wo
           "inputs": ["List of inputs required"],
           "outputs": ["List of outputs produced"],
           "dependencies": ["List of kernels that must complete before this one"],
-          "success_criteria": "How to determine if this kernel executed successfully"
+          "success_criteria": "How to determine if this kernel executed successfully",
+          "tools_required": "True" or "False"
         }
       ],
       "execution_sequence": "Description of the execution flow between kernels"
@@ -216,10 +241,16 @@ Your goal is to transform an abstract plan into concrete, executable units of wo
 #     The planning team should be able to understand exactly why they received their rating and what specific steps they can take to improve the plan.
 # """,
 # )
-
 @agents.chain(
     name="TaskProcess",
-    sequence=["TaskPlanner", "StructurePlanner", "DependencyResolver", "KernelStructurer"],
+    sequence=["TaskPlanner", "StructurePlanner", "DependencyResolver"],
+    instruction="A comprehensive planning workflow that plans, kernelises, and solves dependencies",
+    cumulative=True,
+)
+
+@agents.chain(
+    name="OverallProcess",
+    sequence=["TaskProcess", "KernelStructurer"],
     instruction="A comprehensive planning workflow that plans, kernelises, and solves dependencies",
     cumulative=False,
 )
@@ -232,12 +263,26 @@ Your goal is to transform an abstract plan into concrete, executable units of wo
 # )
 async def main() -> None:
     async with agents.run() as agent:
-        json_result = await agent.TaskProcess.send("""
+        json_result = await agent.OverallProcess.send("""
         Get me the top 3 latest news stories from the New York Times news website and rewrite them in the style of gossip girl.
         """)
 
         # Parse the JSON manually
         try:
+            # Create directory if it doesn't exist
+            json_dir = "json"
+            if not os.path.exists(json_dir):
+                os.makedirs(json_dir)
+
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            json_filename = os.path.join(json_dir, f"kernel_structure_{timestamp}.json")
+
+            # Save JSON to file
+            with open(json_filename, 'w') as f:
+                f.write(json_result)
+            print(f"Saved JSON output to {json_filename}")
+
             kernel_structure = json.loads(json_result)
             print(f"\nStructured output contains {len(kernel_structure['kernels'])} kernels")
             for kernel in kernel_structure['kernels']:

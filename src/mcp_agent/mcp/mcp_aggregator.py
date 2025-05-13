@@ -41,9 +41,11 @@ SEP = "-"
 T = TypeVar("T")
 R = TypeVar("R")
 
+
 def create_namespaced_name(server_name: str, resource_name: str) -> str:
     """Create a namespaced resource name from server and resource names"""
     return f"{server_name}{SEP}{resource_name}"
+
 
 def is_namespaced_name(name: str) -> bool:
     """Check if a name is already namespaced"""
@@ -136,6 +138,9 @@ class MCPAggregator(ContextDependent):
         self._prompt_cache: Dict[str, List[Prompt]] = {}
         self._prompt_cache_lock = Lock()
 
+        # Lock for refreshing tools from a server
+        self._refresh_lock = Lock()
+
     async def close(self) -> None:
         """
         Close all persistent connections when the aggregator is deleted.
@@ -215,8 +220,19 @@ class MCPAggregator(ContextDependent):
                     },
                 )
 
+                # Create a wrapper to capture the parameters for the client session
+                def session_factory(read_stream, write_stream, read_timeout):
+                    return MCPAgentClientSession(
+                        read_stream,
+                        write_stream,
+                        read_timeout,
+                        server_name=server_name,
+                        tool_list_changed_callback=self._handle_tool_list_changed
+                    )
+
                 await self._persistent_connection_manager.get_server(
-                    server_name, client_session_factory=MCPAgentClientSession
+                    server_name,
+                    client_session_factory=session_factory
                 )
 
             logger.info(
@@ -259,8 +275,20 @@ class MCPAggregator(ContextDependent):
                 tools = await fetch_tools(server_connection.session)
                 prompts = await fetch_prompts(server_connection.session, server_name)
             else:
+                # Create a factory function for the client session
+                def create_session(read_stream, write_stream, read_timeout):
+                    return MCPAgentClientSession(
+                        read_stream,
+                        write_stream,
+                        read_timeout,
+                        server_name=server_name,
+                        tool_list_changed_callback=self._handle_tool_list_changed
+                    )
+
                 async with gen_client(
-                    server_name, server_registry=self.context.server_registry
+                    server_name,
+                    server_registry=self.context.server_registry,
+                    client_session_factory=create_session
                 ) as client:
                     tools = await fetch_tools(client)
                     prompts = await fetch_prompts(client, server_name)
@@ -325,14 +353,14 @@ class MCPAggregator(ContextDependent):
         except Exception as e:
             logger.debug(f"Error getting capabilities for server '{server_name}': {e}")
             return None
-            
+
     async def validate_server(self, server_name: str) -> bool:
         """
         Validate that a server exists in our server list.
-        
+
         Args:
             server_name: Name of the server to validate
-            
+
         Returns:
             True if the server exists, False otherwise
         """
@@ -340,25 +368,25 @@ class MCPAggregator(ContextDependent):
         if not valid:
             logger.debug(f"Server '{server_name}' not found")
         return valid
-    
+
     async def server_supports_feature(self, server_name: str, feature: str) -> bool:
         """
         Check if a server supports a specific feature.
-        
+
         Args:
             server_name: Name of the server to check
             feature: Feature to check for (e.g., "prompts", "resources")
-            
+
         Returns:
             True if the server supports the feature, False otherwise
         """
         if not await self.validate_server(server_name):
             return False
-            
+
         capabilities = await self.get_capabilities(server_name)
         if not capabilities:
             return False
-            
+
         return getattr(capabilities, feature, False)
 
     async def list_servers(self) -> List[str]:
@@ -381,6 +409,15 @@ class MCPAggregator(ContextDependent):
                 for namespaced_tool_name, namespaced_tool in self._namespaced_tool_map.items()
             ]
         )
+
+    async def refresh_all_tools(self) -> None:
+        """
+        Refresh the tools for all servers.
+        This is useful when you know tools have changed but haven't received notifications.
+        """
+        logger.info("Refreshing tools for all servers")
+        for server_name in self.server_names:
+            await self._refresh_server_tools(server_name)
 
     async def _execute_on_server(
         self,
@@ -465,26 +502,26 @@ class MCPAggregator(ContextDependent):
         if resource_type == "tool" and name in self._namespaced_tool_map:
             namespaced_tool = self._namespaced_tool_map[name]
             return namespaced_tool.server_name, namespaced_tool.tool.name
-            
+
         # Next, attempt to interpret as a namespaced name
         if is_namespaced_name(name):
             parts = name.split(SEP, 1)
             server_name, local_name = parts[0], parts[1]
-            
+
             # Validate that the parsed server actually exists
             if server_name in self.server_names:
                 return server_name, local_name
-            
+
             # If the server name doesn't exist, it might be a tool with a hyphen in its name
             # Fall through to the next checks
-            
+
         # For tools, search all servers for the tool by exact name match
         if resource_type == "tool":
             for server_name, tools in self._server_to_tool_map.items():
                 for namespaced_tool in tools:
                     if namespaced_tool.tool.name == name:
                         return server_name, name
-                        
+
         # For all other resource types, use the first server
         return (self.server_names[0] if self.server_names else None, name)
 
@@ -524,7 +561,10 @@ class MCPAggregator(ContextDependent):
                 operation_type="tool",
                 operation_name=local_tool_name,
                 method_name="call_tool",
-                method_args={"name": local_tool_name, "arguments": arguments},
+                method_args={
+                    "name": local_tool_name,
+                    "arguments": arguments,
+                },
                 error_factory=lambda msg: CallToolResult(
                     isError=True, content=[TextContent(type="text", text=msg)]
                 ),
@@ -558,7 +598,7 @@ class MCPAggregator(ContextDependent):
         elif is_namespaced_name(prompt_name):
             parts = prompt_name.split(SEP, 1)
             potential_server = parts[0]
-            
+
             # Only treat as namespaced if the server part is valid
             if potential_server in self.server_names:
                 server_name = potential_server
@@ -570,7 +610,7 @@ class MCPAggregator(ContextDependent):
         else:
             local_prompt_name = prompt_name
             # We'll search all servers below
-        
+
         # If we have a specific server to check
         if server_name:
             if not await self.validate_server(server_name):
@@ -579,7 +619,7 @@ class MCPAggregator(ContextDependent):
                     description=f"Error: Server '{server_name}' not found",
                     messages=[],
                 )
-                
+
             # Check if server supports prompts
             if not await self.server_supports_feature(server_name, "prompts"):
                 logger.debug(f"Server '{server_name}' does not support prompts")
@@ -858,6 +898,102 @@ class MCPAggregator(ContextDependent):
 
         logger.debug(f"Available prompts across servers: {results}")
         return results
+
+    async def _handle_tool_list_changed(self, server_name: str) -> None:
+        """
+        Callback handler for ToolListChangedNotification.
+        This will refresh the tools for the specified server.
+
+        Args:
+            server_name: The name of the server whose tools have changed
+        """
+        logger.info(f"Tool list changed for server '{server_name}', refreshing tools")
+
+        # Refresh the tools for this server
+        await self._refresh_server_tools(server_name)
+
+    async def _refresh_server_tools(self, server_name: str) -> None:
+        """
+        Refresh the tools for a specific server.
+
+        Args:
+            server_name: The name of the server to refresh tools for
+        """
+        if not await self.validate_server(server_name):
+            logger.error(f"Cannot refresh tools for unknown server '{server_name}'")
+            return
+
+        async with self._refresh_lock:
+            try:
+                # Fetch new tools from the server
+                if self.connection_persistence:
+                    # Create a factory function that will include our parameters
+                    def create_session(read_stream, write_stream, read_timeout):
+                        return MCPAgentClientSession(
+                            read_stream,
+                            write_stream,
+                            read_timeout,
+                            server_name=server_name,
+                            tool_list_changed_callback=self._handle_tool_list_changed
+                        )
+
+                    server_connection = await self._persistent_connection_manager.get_server(
+                        server_name,
+                        client_session_factory=create_session
+                    )
+                    tools_result = await server_connection.session.list_tools()
+                    new_tools = tools_result.tools or []
+                else:
+                    # Create a factory function for the client session
+                    def create_session(read_stream, write_stream, read_timeout):
+                        return MCPAgentClientSession(
+                            read_stream,
+                            write_stream,
+                            read_timeout,
+                            server_name=server_name,
+                            tool_list_changed_callback=self._handle_tool_list_changed
+                        )
+
+                    async with gen_client(
+                        server_name,
+                        server_registry=self.context.server_registry,
+                        client_session_factory=create_session
+                    ) as client:
+                        tools_result = await client.list_tools()
+                        new_tools = tools_result.tools or []
+
+                # Update tool maps
+                async with self._tool_map_lock:
+                    # Remove old tools for this server
+                    old_tools = self._server_to_tool_map.get(server_name, [])
+                    for old_tool in old_tools:
+                        if old_tool.namespaced_tool_name in self._namespaced_tool_map:
+                            del self._namespaced_tool_map[old_tool.namespaced_tool_name]
+
+                    # Add new tools
+                    self._server_to_tool_map[server_name] = []
+                    for tool in new_tools:
+                        namespaced_tool_name = create_namespaced_name(server_name, tool.name)
+                        namespaced_tool = NamespacedTool(
+                            tool=tool,
+                            server_name=server_name,
+                            namespaced_tool_name=namespaced_tool_name,
+                        )
+
+                        self._namespaced_tool_map[namespaced_tool_name] = namespaced_tool
+                        self._server_to_tool_map[server_name].append(namespaced_tool)
+
+                logger.info(
+                    f"Successfully refreshed tools for server '{server_name}'",
+                    data={
+                        "progress_action": ProgressAction.UPDATED,
+                        "server_name": server_name,
+                        "agent_name": self.agent_name,
+                        "tool_count": len(new_tools),
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to refresh tools for server '{server_name}': {e}")
 
     async def get_resource(
         self, resource_uri: str, server_name: str | None = None

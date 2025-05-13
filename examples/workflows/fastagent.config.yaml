@@ -2,6 +2,7 @@
 # Examples in comments below - check/change the paths.
 #
 #
+default_model: openai.gpt-4.1-nano
 
 logger:
   type: file
