@@ -1,0 +1,52 @@
+{
+  "summary": "Fetch the latest three NYT news stories, summarize them, and rewrite in 'Gossip Girl' style.",
+  "kernels": [
+    {
+      "name": "RetrieveLatestNYTStories",
+      "agent_type": "Web Scraper/API Fetcher",
+      "description": "Access the NYT website or API to obtain the top 3 recent news stories.",
+      "inputs": [
+        "NYT website URL or API credentials"
+      ],
+      "outputs": [
+        "List of latest 3 story titles, URLs, and brief metadata"
+      ],
+      "dependencies": [],
+      "success_criteria": "Successful retrieval of 3 recent news stories with identifiable metadata",
+      "tools_required": "True"
+    },
+    {
+      "name": "SummarizeStories",
+      "agent_type": "Content Summarizer",
+      "description": "Extract key points or summaries from each news story.",
+      "inputs": [
+        "URLs or content of news stories"
+      ],
+      "outputs": [
+        "Brief summaries or main points of each story"
+      ],
+      "dependencies": [
+        "RetrieveLatestNYTStories"
+      ],
+      "success_criteria": "All three stories summarized with clarity and relevance",
+      "tools_required": "False"
+    },
+    {
+      "name": "RewriteInGossipGirlStyle",
+      "agent_type": "Language Stylist",
+      "description": "Transform summarized news stories into a glamorous, teasing, 'Gossip Girl' tone.",
+      "inputs": [
+        "Summaries or main points of each story"
+      ],
+      "outputs": [
+        "Three rewritten stories in 'Gossip Girl' narrative style"
+      ],
+      "dependencies": [
+        "SummarizeStories"
+      ],
+      "success_criteria": "Rewritten stories capture the tone, voice, and flair of 'Gossip Girl'",
+      "tools_required": "False"
+    }
+  ],
+  "execution_sequence": "First, retrieve the latest news stories from NYT. Next, summarize each story to extract key points. Finally, rewrite each summary in the style of 'Gossip Girl' and present the results."
+}

@@ -1,0 +1,78 @@
+{
+  "summary": "Retrieve the latest three news stories from The New York Times, extract key details, and rewrite each in a Gossip Girl style with snappy, sassy language.",
+  "kernels": [
+    {
+      "name": "Fetch Latest News from NYT",
+      "agent_type": "Data Retrieval Agent",
+      "description": "Obtain the top three latest news articles from The New York Times using API or RSS feeds.",
+      "inputs": [
+        "NYT API key or RSS feed URL"
+      ],
+      "outputs": [
+        "Raw news data with titles, summaries, links, publication dates"
+      ],
+      "dependencies": [],
+      "success_criteria": "Successfully retrieve and parse three latest news articles",
+      "tools_required": "True",
+      "assigned_tools": [
+        {
+          "name": "mcp-searxng",
+          "description": "An MCP server implementation integrating the SearXNG API to provide web search capabilities, including features like web search, pagination, time filtering, language selection, and safe search.",
+          "relevance_score": 0.27454972
+        },
+        {
+          "name": "mcp-server-airbnb",
+          "description": "MCP Server for searching Airbnb and get listing details.",
+          "relevance_score": 0.2669655
+        },
+        {
+          "name": "duckduckgo-mcp-server",
+          "description": "A Model Context Protocol (MCP) server providing DuckDuckGo web search, content fetching, and parsing features, intended for integration with Claude Desktop or local development.",
+          "relevance_score": 0.2647155
+        }
+      ],
+      "servers": [
+        "mcp-searxng",
+        "mcp-server-airbnb",
+        "duckduckgo-mcp-server"
+      ]
+    },
+    {
+      "name": "Extract and Summarize Articles",
+      "agent_type": "Data Processing Agent",
+      "description": "Parse retrieved data to extract relevant info and summarize if necessary.",
+      "inputs": [
+        "Raw news data"
+      ],
+      "outputs": [
+        "Extracted headlines, summaries, URLs, dates"
+      ],
+      "dependencies": [
+        "Fetch Latest News from NYT"
+      ],
+      "success_criteria": "Accurate extraction and summarization of articles",
+      "tools_required": "False",
+      "assigned_tools": [],
+      "servers": []
+    },
+    {
+      "name": "Rewrite in Gossip Girl Style",
+      "agent_type": "Stylistic Rewriter",
+      "description": "Transform extracted summaries into Gossip Girl tone with witty, sassy language.",
+      "inputs": [
+        "Extracted articles"
+      ],
+      "outputs": [
+        "Gossip Girl styled summaries with headlines and links"
+      ],
+      "dependencies": [
+        "Extract and Summarize Articles"
+      ],
+      "success_criteria": "Stylized, coherent, and entertaining rewrites",
+      "tools_required": "False",
+      "assigned_tools": [],
+      "servers": []
+    }
+  ],
+  "execution_sequence": "1. Fetch latest news from NYT, 2. Extract and summarize key details, 3. Rewrite summaries in Gossip Girl style and present results."
+}

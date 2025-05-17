@@ -2,30 +2,28 @@
 """
 Kernel Go Command Generator for fast-agent
 
-This script generates 'fast-agent go' commands for kernels specified in a JSON file.
-It reads kernel definitions and creates appropriate commands for each kernel,
-using the specified model.
+This script generates and optionally runs 'fast-agent go' commands for different kernels
+defined in a JSON file.
 
 Usage:
-    python kernel_go.py [--run] [--json-file FILE] [--model MODEL]
+    python kernel_go.py [--run] [--json-file FILE] [--model MODEL] [--kernel KERNEL_NAME]
 
 Examples:
-    # Generate commands for kernels in the default enhanced_kernels.json file
+    # Generate commands for all kernels in the default enhanced_kernels.json file
     python kernel_go.py
     
-    # Generate and run a command for a specific kernel from the file
-    python kernel_go.py --run --kernel FetchLatestNYTStories
+    # Generate and run a command for a specific kernel
+    python kernel_go.py --run --kernel "Fetch Latest News from NYT"
     
     # Specify a different JSON file to read kernels from
-    python kernel_go.py --json-file my_kernels.json
+    python kernel_go.py --json-file my_kernels.json --model openai.gpt-4o
 """
 
 import argparse
 import json
 import os
-import subprocess
 import sys
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 
 def load_kernels(json_file: str) -> Dict:
@@ -50,20 +48,13 @@ def load_kernels(json_file: str) -> Dict:
         sys.exit(1)
 
 
-def generate_command(
-    kernel_name: str,
-    kernel_data: Dict,
-    model: str = "openai.gpt-4.1-nano",
-    instruction: Optional[str] = None,
-) -> str:
+def build_go_command(kernel: Dict, model: str = "openai.gpt-4.1-nano") -> str:
     """
-    Generate a fast-agent go command for the given kernel.
+    Build a fast-agent go command for a kernel.
     
     Args:
-        kernel_name: The name of the kernel
-        kernel_data: Dictionary containing kernel configuration
-        model: The model to use (default: openai.gpt-4.1-nano)
-        instruction: Optional instruction for the agent
+        kernel: Dictionary containing kernel configuration
+        model: Model to use (default: openai.gpt-4.1-nano)
         
     Returns:
         A formatted command string
@@ -71,31 +62,87 @@ def generate_command(
     # Start with the base command
     cmd_parts = ["fast-agent", "go"]
     
-    # Add the model parameter (always use the specified model)
+    # Add the model parameter
     cmd_parts.append(f"--model={model}")
     
-    # Add instruction if provided, otherwise use kernel description
-    if instruction:
-        cmd_parts.append(f'--instruction="{instruction}"')
-    elif "description" in kernel_data:
-        cmd_parts.append(f'--instruction="{kernel_data["description"]}"')
-    
     # Add name parameter
-    cmd_parts.append(f'--name="{kernel_name}"')
+    name = kernel.get("name", "")
+    if name:
+        cmd_parts.append(f"--name=\"{name}\"")
+    
+    # Add instruction based on description
+    description = kernel.get("description", "")
+    agent_type = kernel.get("agent_type", "")
+    
+    if description:
+        instruction = f"{description}\n\nYou are acting as a {agent_type}."
+        cmd_parts.append(f"--instruction=\"{instruction}\"")
     
     # Add servers if available
-    if "servers" in kernel_data and kernel_data["servers"]:
-        servers = ",".join(kernel_data["servers"])
-        cmd_parts.append(f"--servers={servers}")
+    servers = kernel.get("servers", [])
+    if servers:
+        servers_str = ",".join(servers)
+        cmd_parts.append(f"--servers={servers_str}")
     
     # Join all parts into a single command string
     return " ".join(cmd_parts)
 
 
+def generate_go_commands(kernels_data: Dict, model: str = "openai.gpt-4.1-nano", run: bool = False, kernel_name: Optional[str] = None) -> None:
+    """
+    Generate fast-agent go commands for kernels.
+    
+    Args:
+        kernels_data: Dictionary containing kernel definitions
+        model: Model to use for all kernels (default: openai.gpt-4.1-nano)
+        run: Whether to run the command (default: False)
+        kernel_name: Name of a specific kernel to run (default: None)
+    """
+    if "kernels" not in kernels_data:
+        print("Error: The JSON file does not contain a 'kernels' field.")
+        sys.exit(1)
+    
+    kernels = kernels_data["kernels"]
+    
+    if kernel_name:
+        # Process only the specified kernel
+        kernel_found = False
+        for kernel in kernels:
+            if kernel.get("name") == kernel_name:
+                kernel_found = True
+                cmd = build_go_command(kernel, model)
+                print(f"Command for {kernel['name']}: {cmd}")
+                
+                if run:
+                    print(f"\nRunning command: {cmd}\n")
+                    os.system(cmd)
+                break
+        
+        if not kernel_found:
+            print(f"Error: Kernel '{kernel_name}' not found in the JSON file.")
+            print("Available kernels:")
+            for kernel in kernels:
+                print(f"  - {kernel.get('name', 'unnamed')}")
+    else:
+        # Process all kernels
+        for kernel in kernels:
+            if "name" in kernel:
+                cmd = build_go_command(kernel, model)
+                print(f"Command for {kernel['name']}: {cmd}")
+                
+                if run:
+                    print(f"\nRunning command: {cmd}\n")
+                    os.system(cmd)
+                    # Only run the first kernel if multiple are specified
+                    break
+            else:
+                print("Warning: Kernel without a name found, skipping.")
+
+
 def main() -> None:
     """Main function to parse arguments and generate/run commands."""
     parser = argparse.ArgumentParser(
-        description="Generate and optionally run fast-agent go commands for kernels in a JSON file."
+        description="Generate and optionally run fast-agent go commands for kernels."
     )
     parser.add_argument(
         "--json-file",
@@ -120,49 +167,10 @@ def main() -> None:
     args = parser.parse_args()
     
     # Load kernels from the JSON file
-    data = load_kernels(args.json_file)
+    kernels_data = load_kernels(args.json_file)
     
-    # Check if the JSON has the expected structure
-    if "kernels" not in data:
-        print(f"Error: The JSON file does not contain a 'kernels' field.")
-        sys.exit(1)
-    
-    # Process kernels
-    kernels_data = data["kernels"]
-    
-    if args.kernel:
-        # Process only the specified kernel
-        kernel_found = False
-        for kernel in kernels_data:
-            if kernel.get("name") == args.kernel:
-                kernel_found = True
-                cmd = generate_command(kernel["name"], kernel, args.model)
-                print(f"Command for {kernel['name']}: {cmd}")
-                
-                if args.run:
-                    print(f"\nRunning command: {cmd}\n")
-                    os.system(cmd)
-                break
-        
-        if not kernel_found:
-            print(f"Error: Kernel '{args.kernel}' not found in the JSON file.")
-            print("Available kernels:")
-            for kernel in kernels_data:
-                print(f"  - {kernel.get('name', 'unnamed')}")
-    else:
-        # Process all kernels
-        for kernel in kernels_data:
-            if "name" in kernel:
-                cmd = generate_command(kernel["name"], kernel, args.model)
-                print(f"Command for {kernel['name']}: {cmd}")
-                
-                if args.run:
-                    print(f"\nRunning command: {cmd}\n")
-                    os.system(cmd)
-                    # Only run the first kernel if multiple are specified
-                    break
-            else:
-                print("Warning: Kernel without a name found, skipping.")
+    # Generate and optionally run commands
+    generate_go_commands(kernels_data, args.model, args.run, args.kernel)
 
 
 if __name__ == "__main__":

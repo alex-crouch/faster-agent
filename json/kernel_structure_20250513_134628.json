@@ -1,0 +1,36 @@
+{
+  "summary": "Retrieve the three latest news stories from The New York Times, extract key content, and rewrite them in a Gossip Girl style, emphasizing humor, drama, and fashion-forward wit.",
+  "kernels": [
+    {
+      "name": "FetchLatestNYTStories",
+      "agent_type": "Web Scraper / API Client",
+      "description": "Retrieve the top 3 most recent news stories from The New York Times.",
+      "inputs": ["NYT homepage URL or section URL"],
+      "outputs": ["Raw headlines, summaries, full content if accessible"],
+      "dependencies": [],
+      "success_criteria": "Successfully retrieve and identify the latest 3 stories with titles and core content",
+      "tools_required": "True"
+    },
+    {
+      "name": "ParseAndSummarizeContent",
+      "agent_type": "Text Processor / Summarizer",
+      "description": "Extract and condense the main points or summaries from each news story.",
+      "inputs": ["Raw news content from FetchLatestNYTStories"],
+      "outputs": ["Concise summaries or key excerpts for each story"],
+      "dependencies": ["FetchLatestNYTStories"],
+      "success_criteria": "Obtain brief, clear summaries or key snippets suitable for stylistic rewriting",
+      "tools_required": "False"
+    },
+    {
+      "name": "RewriteInGossipStyle",
+      "agent_type": "Creative Writer / Stylistic Rephrasing",
+      "description": "Transform the summaries into snarky, fashionable gossip-style narratives.",
+      "inputs": ["Summaries from ParseAndSummarizeContent"],
+      "outputs": ["Three narratives styled as Gossip Girl with headlines"],
+      "dependencies": ["ParseAndSummarizeContent"],
+      "success_criteria": "Generated engaging, witty, and stylistically consistent gossip stories",
+      "tools_required": "False"
+    }
+  ],
+  "execution_sequence": "First, fetch the latest stories from NYT. Then, parse and condense their content. Finally, rewrite them in Gossip Girl style for maximum flair."
+}

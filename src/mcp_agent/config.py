@@ -558,6 +558,7 @@ def get_settings(config_path: str | None = None) -> Settings:
             try:
                 if merged_settings["qdrant_url"]:
                     qdrant_settings = load_servers_from_qdrant(merged_settings["qdrant_url"])
+                    print(qdrant_settings)
                     merged_settings = deep_merge(merged_settings, qdrant_settings)
             except:  # update to actual exception
                 print(f"Warning: Failed to load qdrant settings")

@@ -1,0 +1,46 @@
+{
+  "summary": "A linear, acyclic dependency chain sequentially linking kernels from data retrieval to final formatting, with opportunities for intra-stage parallelism.",
+  "kernels": [
+    {
+      "name": "Retrieve Stories",
+      "agent_type": "Data Fetching Agent",
+      "description": "Fetches raw news stories to be processed.",
+      "inputs": [],
+      "outputs": ["Raw stories data"],
+      "dependencies": [],
+      "success_criteria": "Stories successfully retrieved and formatted.",
+      "tools_required": "True"
+    },
+    {
+      "name": "Extract Content",
+      "agent_type": "Content Parsing Agent",
+      "description": "Extracts article content from raw stories.",
+      "inputs": ["Raw stories data"],
+      "outputs": ["Extracted article content"],
+      "dependencies": ["Retrieve Stories"],
+      "success_criteria": "Content successfully extracted without errors.",
+      "tools_required": "True"
+    },
+    {
+      "name": "Rewrite in Gossip Girl Style",
+      "agent_type": "Creative Rewriting Agent",
+      "description": "Rewrites article content in Gossip Girl style.",
+      "inputs": ["Extracted article content"],
+      "outputs": ["Gossip Girl styled articles"],
+      "dependencies": ["Extract Content"],
+      "success_criteria": "Articles rewritten with stylistic consistency.",
+      "tools_required": "True"
+    },
+    {
+      "name": "Format and Present",
+      "agent_type": "Formatting & Presentation Agent",
+      "description": "Finalizes and formats the articles for presentation.",
+      "inputs": ["Gossip Girl styled articles"],
+      "outputs": ["Formatted news presentation"],
+      "dependencies": ["Rewrite in Gossip Girl Style"],
+      "success_criteria": "Final presentation matches format specifications.",
+      "tools_required": "True"
+    }
+  ],
+  "execution_sequence": "Kernel 1 (Retrieve Stories) → Kernel 2 (Extract Content) → Kernel 3 (Rewrite in Gossip Girl Style) → Kernel 4 (Format and Present)"
+}
