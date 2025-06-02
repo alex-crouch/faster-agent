@@ -33,10 +33,10 @@ from typing import Dict, List, Optional, Any
 def load_kernels(json_file: str) -> Dict:
     """
     Load kernels from a JSON file.
-    
+
     Args:
         json_file: Path to the JSON file containing kernel definitions
-        
+
     Returns:
         Dictionary containing the parsed JSON data
     """
@@ -55,7 +55,7 @@ def load_kernels(json_file: str) -> Dict:
 def generate_agent_file(kernels_data: Dict, output_file: str, model: str = "openai.gpt-4.1-nano") -> None:
     """
     Generate a complete agent file from kernel definitions.
-    
+
     Args:
         kernels_data: Dictionary containing kernel definitions
         output_file: Path to save the generated Python file
@@ -66,10 +66,11 @@ def generate_agent_file(kernels_data: Dict, output_file: str, model: str = "open
         sys.exit(1)
 
     # Extract kernels and summary
+    name = kernels_data["name"]
     kernels = kernels_data["kernels"]
     summary = kernels_data.get("summary", "Generated workflow from kernel definitions")
     execution_sequence = kernels_data.get("execution_sequence", "")
-    
+
     # Generate imports and FastAgent setup
     code = [
         "#!/usr/bin/env python3",
@@ -81,55 +82,60 @@ def generate_agent_file(kernels_data: Dict, output_file: str, model: str = "open
         "",
         "import asyncio",
         "import json",
+        "from mcp_agent.core.request_params import RequestParams",
         "from mcp_agent.core.fastagent import FastAgent",
         "from pathlib import Path",
         "from typing import List, Dict, Any",
         "",
         f"# Create the FastAgent application",
-        f'fast = FastAgent(name="Kernel Workflow")',
+        f'fast = FastAgent(name="{name}")',
         "",
     ]
-    
+
     # Generate agent definitions
     for kernel in kernels:
         name = kernel.get("name", "")
         if not name:
             continue
-            
+
         agent_type = kernel.get("agent_type", "")
         description = kernel.get("description", "")
         servers = kernel.get("servers", [])
         tools_required = kernel.get("tools_required", "False")
-        
+
         # Format servers if they exist
         servers_param = ""
         if servers and len(servers) > 0:
             servers_str = ", ".join([f'"{s}"' for s in servers])
             servers_param = f'servers=[{servers_str}],'
-        
+
         # Create the agent decorator
         agent_code = [
             f'@fast.agent(',
-            f'    name="{name}",',
+            f'    name="""{name}""",',
             f'    instruction="""{description}',
             f'    ',
             f'    You are acting as a {agent_type}',
             f'    """,'
         ]
-        
+
         # Add servers if needed
         if servers_param:
             agent_code.append(f'    {servers_param}')
-            
+
         # Add model parameter
         agent_code.append(f'    model="{model}",')
-        
+
+        agent_code.append(f'    request_params=RequestParams(')
+        agent_code.append(f'        parallel_tool_calls=False,')
+        agent_code.append(f'    )')
+
         # Close the decorator
         agent_code.append(')')
-        
+
         # Add the agent code to the main code list
         code.extend(agent_code)
-    
+
     # Build dependency map
     dependency_map = {}
     for kernel in kernels:
@@ -137,64 +143,64 @@ def generate_agent_file(kernels_data: Dict, output_file: str, model: str = "open
         dependencies = kernel.get("dependencies", [])
         if name:
             dependency_map[name] = dependencies
-    
+
     # Find kernels with no dependencies (starting points)
     no_deps = [k["name"] for k in kernels if not k.get("dependencies", [])]
-    
+
     # Determine the execution order based on dependencies
     execution_order = []
     remaining = [k["name"] for k in kernels]
-    
+
     # Start with kernels that have no dependencies
     current_level = no_deps
-    
+
     while current_level and remaining:
         execution_order.extend(current_level)
         for name in current_level:
             if name in remaining:
                 remaining.remove(name)
-        
+
         # Find next level (kernels whose dependencies are all satisfied)
         next_level = []
         for name in remaining:
             deps = dependency_map.get(name, [])
             if all(dep in execution_order for dep in deps):
                 next_level.append(name)
-        
+
         current_level = next_level
-    
+
     # If we still have remaining kernels, there might be circular dependencies
     if remaining:
         # Add warning comment
         code.append("\n# Warning: Possible circular dependencies detected in kernels:")
         for name in remaining:
             code.append(f"# - {name}")
-    
+
     # Create main workflow chain if there are multiple kernels
     if len(execution_order) > 1:
         # Format sequence
-        sequence_str = ", ".join([f'"{s}"' for s in execution_order])
-        
+        sequence_str = ", ".join([f'"""{s}"""' for s in execution_order])
+
         chain_code = [
             "",
             f'@fast.chain(',
             f'    name="WorkflowChain",',
             f'    sequence=[{sequence_str}],',
             f'    instruction="{summary}",',
-            f'    cumulative=True,',
+            f'    cumulative=False,',
             ')'
         ]
-        
+
         # Add the chain code to the main code list
         code.extend(chain_code)
-    
+
     # Generate the main function
     main_func = [
         "",
         "async def main() -> None:",
         "    async with fast.run() as agent:",
     ]
-    
+
     # Choose how to start the agent based on chain existence
     if len(execution_order) > 1:
         main_func.extend([
@@ -205,17 +211,10 @@ def generate_agent_file(kernels_data: Dict, output_file: str, model: str = "open
             "        print(\"\\nWorkflow completed!\\n\")",
             "        print(result)",
             "",
-            "        # Start interactive mode with the last agent in the chain",
-            f'        await agent.{execution_order[-1]}.interactive()',
-        ])
-    elif execution_order:
-        main_func.extend([
-            f'        # Start interactive mode with the only agent',
-            f'        await agent.{execution_order[0]}.interactive()',
         ])
     else:
         main_func.append('        await agent.interactive()')
-        
+
     # Add the entry point code
     entry_point = [
         "",
@@ -223,17 +222,17 @@ def generate_agent_file(kernels_data: Dict, output_file: str, model: str = "open
         '    asyncio.run(main())',
         ""
     ]
-    
+
     # Combine all code sections
     code.extend(main_func)
     code.extend(entry_point)
-    
+
     # Write to file
     with open(output_file, 'w') as f:
         f.write("\n".join(code))
-        
+
     print(f"Generated agent file: {output_file}")
-    
+
     # Make the file executable
     os.chmod(output_file, 0o755)
 
@@ -263,20 +262,20 @@ def main():
         default="openai.gpt-4.1-nano",
         help="Model to use for all agents (default: openai.gpt-4.1-nano)"
     )
-    
+
     args = parser.parse_args()
-    
+
     # Set default output file if not provided
     if args.output is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         args.output = f"generated_workflow_{timestamp}.py"
-    
+
     # Load kernel definitions
     kernels_data = load_kernels(args.json_file)
-    
+
     # Generate the agent file
     generate_agent_file(kernels_data, args.output, args.model)
-    
+
     # Run the agent if requested
     if args.run:
         print(f"Running generated agent file: {args.output}")

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class KernelServerAssigner:
     """A class that assigns appropriate tools to kernels based on their descriptions."""
 
-    def __init__(self, openai_api_key: str, qdrant_host: str = "localhost", qdrant_port: int = 6333):
+    def __init__(self, openai_api_key: str, qdrant_host: str = "192.168.194.33", qdrant_port: int = 6333):
         """Initialize the KernelToolAssigner with necessary configurations.
 
         Args:
@@ -36,7 +36,7 @@ class KernelServerAssigner:
         )
 
     def find_servers_for_kernel(self, kernel: Dict[str, Any], max_servers: int = 3) -> List[Dict[str, Any]]:
-        """Find appropriate tools for a given kernel based on its description.
+        """Find appropriate tools for a given kernel based on its description and required tool types.
 
         Args:
             kernel: The kernel dictionary from the kernel structure
@@ -45,25 +45,57 @@ class KernelServerAssigner:
         Returns:
             List of server dictionaries with name, description and relevance score
         """
-        # Construct a search query based on the kernel's description and agent type
-        search_query = f"{kernel['agent_type']}: {kernel['description']}"
-        logger.info(f"Searching servers for kernel '{kernel['name']}' with query: '{search_query}'")
-
-        # Use ToolRAG to retrieve relevant tools
-        search_results = self.tool_rag.retrieve(search_query)
-
-        # Extract and format tool information
         servers = []
-        for result in search_results[:max_servers]:  # Limit to max_tools
-            payload = result.payload
-            servers_name = payload.get(self.tool_rag.payload_name_field, f"Server {result.id}")
-            servers_desc = payload.get(self.tool_rag.payload_text_field, "No description available")
 
-            servers.append({
-                "name": servers_name,
-                "description": servers_desc,
-                "relevance_score": result.score
-            })
+        # Check if kernel has specific required tool types
+        required_tool_types = kernel.get("required_tool_types", [])
+
+        if required_tool_types:
+            logger.info(f"Kernel '{kernel['name']}' requires specific tool types: {required_tool_types}")
+
+            # Perform a search for each required tool type
+            for tool_type in required_tool_types:
+                # Construct a search query based on the tool type and kernel description
+                # search_query = f"tool type: {tool_type}, {kernel['agent_type']}: {kernel['description']}"
+                # logger.info(f"Searching servers for tool type '{tool_type}' with query: '{search_query}'")
+
+                # Use ToolRAG to retrieve relevant tools for this type
+                search_results = self.tool_rag.retrieve(tool_type)
+
+                # Take the top result for each tool type
+                if search_results:
+                    result = search_results[0]
+                    payload = result.payload
+                    servers_name = payload.get(self.tool_rag.payload_name_field, f"Server {result.id}")
+                    servers_desc = payload.get(self.tool_rag.payload_text_field, "No description available")
+
+                    servers.append({
+                        "name": servers_name,
+                        "description": servers_desc,
+                        "relevance_score": result.score,
+                        "tool_type": tool_type
+                    })
+                    logger.info(f"Found server '{servers_name}' for tool type '{tool_type}' with score {result.score:.4f}")
+        else:
+            # Fallback to the original method if no specific tool types are defined
+            search_query = f"{kernel['agent_type']}: {kernel['description']}"
+            logger.info(f"No specific tool types defined. Searching servers for kernel '{kernel['name']}' with query: '{search_query}'")
+
+            # Use ToolRAG to retrieve relevant tools
+            search_results = self.tool_rag.retrieve(search_query)
+
+            # Extract and format tool information
+            for result in search_results[:max_servers]:  # Limit to max_tools
+                payload = result.payload
+                servers_name = payload.get(self.tool_rag.payload_name_field, f"Server {result.id}")
+                servers_desc = payload.get(self.tool_rag.payload_text_field, "No description available")
+
+                servers.append({
+                    "name": servers_name,
+                    "description": servers_desc,
+                    "relevance_score": result.score,
+                    "tool_type": "general"
+                })
 
         return servers
 
@@ -85,7 +117,13 @@ class KernelServerAssigner:
             tools_required = kernel.get("tools_required", "False")
 
             if tools_required.lower() == "true":
-                # Find tools for this kernel
+                # Check if kernel has specified required tool types
+                if not kernel.get("required_tool_types"):
+                    # If tools are required but no types are specified, initialize the field
+                    logger.warning(f"Kernel '{kernel['name']}' requires tools but no specific types are defined")
+                    kernel["required_tool_types"] = []
+
+                # Find tools for this kernel based on required types and descriptions
                 servers = self.find_servers_for_kernel(kernel)
 
                 # Add tools to the kernel
@@ -95,12 +133,27 @@ class KernelServerAssigner:
                 server_names = [server["name"] for server in servers]
                 kernel["servers"] = server_names
 
+                # Group assigned tools by type for clarity
+                tool_types_assigned = {}
+                for server in servers:
+                    tool_type = server.get("tool_type", "general")
+                    if tool_type not in tool_types_assigned:
+                        tool_types_assigned[tool_type] = []
+                    tool_types_assigned[tool_type].append(server["name"])
+
+                kernel["tool_types_assigned"] = tool_types_assigned
+
                 logger.info(f"Assigned {len(servers)} tools to {kernel['name']}: {', '.join(server_names)}")
+                for tool_type, tools in tool_types_assigned.items():
+                    logger.info(f"  - Type '{tool_type}': {', '.join(tools)}")
             else:
                 logger.info(f"No tools required for {kernel['name']}, skipping tool assignment")
                 # Add empty lists to maintain consistency in structure
                 kernel["assigned_tools"] = []
                 kernel["servers"] = []
+                kernel["tool_types_assigned"] = {}
+                if not kernel.get("required_tool_types"):
+                    kernel["required_tool_types"] = []
         return enhanced_structure
 
 def main():
@@ -108,7 +161,7 @@ def main():
     # Set up argument parsing
     parser = argparse.ArgumentParser(description="Assign appropriate tools to kernels based on their descriptions")
     parser.add_argument("input_file", type=str, help="Path to the JSON file containing the kernel structure")
-    parser.add_argument("--output-file", type=str, default="enhanced_kernels.json",
+    parser.add_argument("--output-file", type=str, default=None,
                        help="Path to save the enhanced kernel structure with tool assignments")
     parser.add_argument("--openai-key", type=str, default=os.environ.get("OPENAI_API_KEY"),
                        help="OpenAI API Key (defaults to OPENAI_API_KEY environment variable)")
@@ -123,6 +176,12 @@ def main():
     if not args.openai_key:
         logger.error("Error: OpenAI API Key is required. Set --openai-key or OPENAI_API_KEY environment variable.")
         exit(1)
+
+    # Set default output file if not specified
+    if args.output_file is None:
+        # Split the input filename and add "-enhanced" before the extension
+        input_base, input_ext = os.path.splitext(args.input_file)
+        args.output_file = f"{input_base}-enhanced{input_ext}"
 
     # Load the kernel structure from the input file
     try:
@@ -153,8 +212,20 @@ def main():
         print("\n--- Server Assignment Summary ---")
         for kernel in enhanced_structure.get("kernels", []):
             print(f"\n{kernel['name']} ({kernel['agent_type']}):")
-            for server in kernel.get("assigned_servers", []):
-                print(f"  - {server['name']} (Score: {server['relevance_score']:.4f})")
+
+            # Print required tool types
+            required_types = kernel.get("required_tool_types", [])
+            if required_types:
+                print(f"  Required tool types: {', '.join(required_types)}")
+
+            # Print assigned tools grouped by type
+            tool_types = kernel.get("tool_types_assigned", {})
+            if tool_types:
+                for tool_type, servers in tool_types.items():
+                    print(f"  - Type '{tool_type}': {', '.join(servers)}")
+            else:
+                for server in kernel.get("assigned_tools", []):
+                    print(f"  - {server['name']} (Score: {server['relevance_score']:.4f}, Type: {server.get('tool_type', 'general')})")
         print("\n-----------------------------")
 
     except Exception as e:
