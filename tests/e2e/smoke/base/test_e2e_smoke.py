@@ -19,16 +19,18 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize(
     "model_name",
     [
-        "gpt-4.1",
-        "gpt-4.1-nano",
         "gpt-4.1-mini",
         "gpt-4o-mini",  # OpenAI model
         "haiku35",  # Anthropic model
         "deepseek",
         #        "generic.qwen2.5:latest",
-        "generic.llama3.2:latest",
+        #        "generic.llama3.2:latest",
         "openrouter.google/gemini-2.0-flash-001",
+        "googleoai.gemini-2.5-flash-preview-05-20",
         "google.gemini-2.0-flash",
+        "gemini2",
+        "gemini25",  # Works -> Done. Works most of the time, unless Gemini decides to write very long outputs.
+        "azure.gpt-4.1",
     ],
 )
 async def test_basic_textual_prompting(fast_agent, model_name):
@@ -95,10 +97,12 @@ async def test_open_ai_history(fast_agent, model_name):
         "haiku35",  # Anthropic model
         "deepseek",
         "openrouter.google/gemini-2.0-flash-001",
+        "gemini2",
+        "gemini25",  # Works -> DONE.
+        "o3-mini.low",
     ],
 )
 async def test_multiple_text_blocks_prompting(fast_agent, model_name):
-    """Test that the agent can process an image and respond appropriately."""
     fast = fast_agent
 
     # Define the agent
@@ -179,9 +183,11 @@ class WeatherForecast(BaseModel):
     [
         "gpt-4o",  # OpenAI model
         "o3-mini.low",  # reasoning
-        "gpt-4.1",
         "gpt-4.1-nano",
         "gpt-4.1-mini",
+        "gemini2",
+        "gemini25",  # Works -> DONE.
+        "azure.gpt-4.1",
     ],
 )
 async def test_structured_weather_forecast_openai_structured_api(fast_agent, model_name):
@@ -292,11 +298,13 @@ async def test_generic_model_textual_prompting(fast_agent, model_name):
         "deepseek",
         "haiku35",
         "gpt-4o",
-        "gpt-4.1",
         "gpt-4.1-nano",
         "gpt-4.1-mini",
-        "google.gemini-2.0-flash",
+        "gemini2",
         "openrouter.google/gemini-2.0-flash-001",
+        "gemini25",
+        "o3-mini.low",
+        "azure.gpt-4.1",
     ],
 )
 async def test_basic_tool_calling(fast_agent, model_name):
@@ -305,7 +313,7 @@ async def test_basic_tool_calling(fast_agent, model_name):
 
     @fast.agent(
         "weatherforecast",
-        instruction="You are a helpful assistant that provides syntehsized weather data for testing"
+        instruction="You are a helpful assistant that provides synthesized weather data for testing"
         " purposes.",
         model=model_name,
         servers=["test_server"],
@@ -338,11 +346,11 @@ async def test_basic_tool_calling(fast_agent, model_name):
         "deepseek",
         "haiku35",
         "gpt-4o",
-        "gpt-4.1",
-        "gpt-4.1-nano",
         "gpt-4.1-mini",
-        "google.gemini-2.0-flash",
+        "gemini2",
+        "gemini25",  # Works -> DONE.
         "openrouter.anthropic/claude-3.7-sonnet",
+        "azure.gpt-4.1",
     ],
 )
 async def test_tool_calls_no_args(fast_agent, model_name):
@@ -375,6 +383,7 @@ async def test_tool_calls_no_args(fast_agent, model_name):
         #     "gpt-4.1-nano",
         "gpt-4.1-mini",
         "google.gemini-2.0-flash",
+        "gemini25",  # Works -> DONE.
         #       "openrouter.anthropic/claude-3.7-sonnet",
     ],
 )
@@ -409,6 +418,7 @@ async def test_tool_calls_no_args_typescript(fast_agent, model_name):
         "haiku35",
         "gpt-4.1",
         "google.gemini-2.0-flash",
+        "gemini25",  # Works -> DONE.
     ],
 )
 async def test_server_has_hyphen(fast_agent, model_name):

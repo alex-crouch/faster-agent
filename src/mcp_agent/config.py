@@ -183,6 +183,20 @@ class OpenRouterSettings(BaseModel):
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
+class AzureSettings(BaseModel):
+    """
+    Settings for using Azure OpenAI Service in the fast-agent application.
+    """
+
+    api_key: str | None = None
+    resource_name: str | None = None
+    azure_deployment: str | None = None
+    api_version: str | None = None
+    base_url: str | None = None  # Optional, can be constructed from resource_name
+
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
+
+
 class OpenTelemetrySettings(BaseModel):
     """
     OTEL settings for the fast-agent application.
@@ -287,6 +301,9 @@ class Settings(BaseSettings):
     Default model for agents. Format is provider.model_name.<reasoning_effort>, for example openai.o3-mini.low
     Aliases are provided for common models e.g. sonnet, haiku, gpt-4.1, o3-mini etc.
     """
+    
+    auto_sampling: bool = True
+    """Enable automatic sampling model selection if not explicitly configured"""
 
     anthropic: AnthropicSettings | None = None
     """Settings for using Anthropic models in the fast-agent application"""
@@ -311,6 +328,9 @@ class Settings(BaseSettings):
 
     tensorzero: Optional[TensorZeroSettings] = None
     """Settings for using TensorZero inference gateway"""
+
+    azure: AzureSettings | None = None
+    """Settings for using Azure OpenAI Service in the fast-agent application"""
 
     logger: LoggerSettings | None = LoggerSettings()
     """Logger settings for the fast-agent application"""

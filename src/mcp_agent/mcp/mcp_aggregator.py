@@ -25,6 +25,7 @@ from pydantic import AnyUrl, BaseModel, ConfigDict
 from mcp_agent.context_dependent import ContextDependent
 from mcp_agent.event_progress import ProgressAction
 from mcp_agent.logging.logger import get_logger
+from mcp_agent.mcp.common import SEP, create_namespaced_name, is_namespaced_name
 from mcp_agent.mcp.gen_client import gen_client
 from mcp_agent.mcp.mcp_agent_client_session import MCPAgentClientSession
 from mcp_agent.mcp.mcp_connection_manager import MCPConnectionManager
@@ -35,21 +36,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)  # This will be replaced per-instance when agent_name is available
 
-SEP = "-"
-
 # Define type variables for the generalized method
 T = TypeVar("T")
 R = TypeVar("R")
-
-
-def create_namespaced_name(server_name: str, resource_name: str) -> str:
-    """Create a namespaced resource name from server and resource names"""
-    return f"{server_name}{SEP}{resource_name}"
-
-
-def is_namespaced_name(name: str) -> bool:
-    """Check if a name is already namespaced"""
-    return SEP in name
 
 
 class NamespacedTool(BaseModel):
@@ -94,6 +83,11 @@ class MCPAggregator(ContextDependent):
             self._persistent_connection_manager = self.context._connection_manager
 
         await self.load_servers()
+        # Import the display component here to avoid circular imports
+        from mcp_agent.ui.console_display import ConsoleDisplay
+
+        # Initialize the display component
+        self.display = ConsoleDisplay(config=self.context.config)
 
         return self
 
@@ -221,18 +215,24 @@ class MCPAggregator(ContextDependent):
                 )
 
                 # Create a wrapper to capture the parameters for the client session
-                def session_factory(read_stream, write_stream, read_timeout):
+                def session_factory(read_stream, write_stream, read_timeout, **kwargs):
+                    # Get agent's model if this aggregator is part of an agent
+                    agent_model = None
+                    if hasattr(self, 'config') and self.config and hasattr(self.config, 'model'):
+                        agent_model = self.config.model
+                    
                     return MCPAgentClientSession(
                         read_stream,
                         write_stream,
                         read_timeout,
                         server_name=server_name,
-                        tool_list_changed_callback=self._handle_tool_list_changed
+                        agent_model=agent_model,
+                        tool_list_changed_callback=self._handle_tool_list_changed,
+                        **kwargs  # Pass through any additional kwargs like server_config
                     )
 
                 await self._persistent_connection_manager.get_server(
-                    server_name,
-                    client_session_factory=session_factory
+                    server_name, client_session_factory=session_factory
                 )
 
             logger.info(
@@ -276,19 +276,26 @@ class MCPAggregator(ContextDependent):
                 prompts = await fetch_prompts(server_connection.session, server_name)
             else:
                 # Create a factory function for the client session
-                def create_session(read_stream, write_stream, read_timeout):
+                def create_session(read_stream, write_stream, read_timeout, **kwargs):
+                    # Get agent's model if this aggregator is part of an agent
+                    agent_model = None
+                    if hasattr(self, 'config') and self.config and hasattr(self.config, 'model'):
+                        agent_model = self.config.model
+                    
                     return MCPAgentClientSession(
                         read_stream,
                         write_stream,
                         read_timeout,
                         server_name=server_name,
-                        tool_list_changed_callback=self._handle_tool_list_changed
+                        agent_model=agent_model,
+                        tool_list_changed_callback=self._handle_tool_list_changed,
+                        **kwargs  # Pass through any additional kwargs like server_config
                     )
 
                 async with gen_client(
                     server_name,
                     server_registry=self.context.server_registry,
-                    client_session_factory=create_session
+                    client_session_factory=create_session,
                 ) as client:
                     tools = await fetch_tools(client)
                     prompts = await fetch_prompts(client, server_name)
@@ -804,12 +811,13 @@ class MCPAggregator(ContextDependent):
             messages=[],
         )
 
-    async def list_prompts(self, server_name: str | None = None) -> Mapping[str, List[Prompt]]:
+    async def list_prompts(self, server_name: str | None = None, agent_name: str | None = None) -> Mapping[str, List[Prompt]]:
         """
         List available prompts from one or all servers.
 
         :param server_name: Optional server name to list prompts from. If not provided,
                            lists prompts from all servers.
+        :param agent_name: Optional agent name (ignored at this level, used by multi-agent apps)
         :return: Dictionary mapping server names to lists of Prompt objects
         """
         if not self.initialized:
@@ -923,6 +931,8 @@ class MCPAggregator(ContextDependent):
             logger.error(f"Cannot refresh tools for unknown server '{server_name}'")
             return
 
+        await self.display.show_tool_update(aggregator=self, updated_server=server_name)
+
         async with self._refresh_lock:
             try:
                 # Fetch new tools from the server
@@ -934,12 +944,11 @@ class MCPAggregator(ContextDependent):
                             write_stream,
                             read_timeout,
                             server_name=server_name,
-                            tool_list_changed_callback=self._handle_tool_list_changed
+                            tool_list_changed_callback=self._handle_tool_list_changed,
                         )
 
                     server_connection = await self._persistent_connection_manager.get_server(
-                        server_name,
-                        client_session_factory=create_session
+                        server_name, client_session_factory=create_session
                     )
                     tools_result = await server_connection.session.list_tools()
                     new_tools = tools_result.tools or []
@@ -951,13 +960,13 @@ class MCPAggregator(ContextDependent):
                             write_stream,
                             read_timeout,
                             server_name=server_name,
-                            tool_list_changed_callback=self._handle_tool_list_changed
+                            tool_list_changed_callback=self._handle_tool_list_changed,
                         )
 
                     async with gen_client(
                         server_name,
                         server_registry=self.context.server_registry,
-                        client_session_factory=create_session
+                        client_session_factory=create_session,
                     ) as client:
                         tools_result = await client.list_tools()
                         new_tools = tools_result.tools or []
