@@ -1,4 +1,4 @@
-from openai import AuthenticationError, AzureOpenAI, OpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI, AuthenticationError
 
 from mcp_agent.core.exceptions import ProviderKeyError
 from mcp_agent.llm.provider_types import Provider
@@ -69,7 +69,7 @@ class AzureOpenAIAugmentedLLM(OpenAIAugmentedLLM):
 
             self.get_azure_token = get_azure_token
         else:
-            self.api_key = getattr(azure_cfg, "api_key", None)
+            self.api_key = self._api_key()
             self.resource_name = getattr(azure_cfg, "resource_name", None)
             self.base_url = getattr(azure_cfg, "base_url", None) or (
                 f"https://{self.resource_name}.openai.azure.com/" if self.resource_name else None
@@ -93,7 +93,13 @@ class AzureOpenAIAugmentedLLM(OpenAIAugmentedLLM):
             if not self.resource_name and self.base_url:
                 self.resource_name = _extract_resource_name(self.base_url)
 
-    def _openai_client(self) -> OpenAI:
+    def _api_key(self):
+        """Override to return 'AzureCredential' when using DefaultAzureCredential"""
+        if self.use_default_cred:
+            return "AzureCredential"
+        return super()._api_key()
+
+    def _openai_client(self) -> AsyncOpenAI:
         """
         Returns an AzureOpenAI client, handling both API Key and DefaultAzureCredential.
         """
@@ -104,7 +110,7 @@ class AzureOpenAIAugmentedLLM(OpenAIAugmentedLLM):
                         "Missing Azure endpoint",
                         "azure_endpoint (base_url) is None at client creation time.",
                     )
-                return AzureOpenAI(
+                return AsyncAzureOpenAI(
                     azure_ad_token_provider=self.get_azure_token,
                     azure_endpoint=self.base_url,
                     api_version=self.api_version,
@@ -116,7 +122,7 @@ class AzureOpenAIAugmentedLLM(OpenAIAugmentedLLM):
                         "Missing Azure endpoint",
                         "azure_endpoint (base_url) is None at client creation time.",
                     )
-                return AzureOpenAI(
+                return AsyncAzureOpenAI(
                     api_key=self.api_key,
                     azure_endpoint=self.base_url,
                     api_version=self.api_version,

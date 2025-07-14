@@ -19,12 +19,20 @@ class DummyAzureConfig:
         self.base_url: Optional[str] = None
         self.use_default_azure_credential: bool = False
 
+    def get(self, key, default=None):
+        """Make DummyAzureConfig dict-like for ProviderKeyManager compatibility"""
+        return getattr(self, key, default)
+
 
 class DummyConfig:
     def __init__(self, azure_cfg=None):
         self.azure = azure_cfg or DummyAzureConfig()
         self.logger = DummyLogger()
         self.openai = None  # For compatibility with OpenAIAugmentedLLM
+
+    def get(self, key, default=None):
+        """Make DummyConfig dict-like for ProviderKeyManager compatibility"""
+        return getattr(self, key, default)
 
 
 class DummyContext:
@@ -80,7 +88,7 @@ async def test_openai_client_with_default_azure_credential(monkeypatch):
                 )
             )
 
-    monkeypatch.setattr(azure_mod, "AzureOpenAI", DummyAzureOpenAI)
+    monkeypatch.setattr(azure_mod, "AsyncAzureOpenAI", DummyAzureOpenAI)
 
     class DACfg:
         def __init__(self):

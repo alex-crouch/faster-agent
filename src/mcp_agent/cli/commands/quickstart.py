@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 app = typer.Typer(
-    help="Create example applications",
+    help="Create fast-agent quickstarts",
     no_args_is_help=False,  # Allow showing our custom help instead
 )
 console = Console()
@@ -59,6 +59,23 @@ EXAMPLE_TYPES = {
         ],
         "create_subdir": True,
     },
+    "elicitations": {
+        "description": "Interactive form examples using MCP elicitations feature.\n"
+        "Demonstrates collecting structured data with forms, AI-guided workflows,\n"
+        "and custom handlers. Creates examples in an 'elicitations' subdirectory.",
+        "files": [
+            "elicitation_account_server.py",
+            "elicitation_forms_server.py",
+            "elicitation_game_server.py",
+            "fastagent.config.yaml",
+            "fastagent.secrets.yaml.example",
+            "forms_demo.py",
+            "game_character.py",
+            "game_character_handler.py",
+            "tool_call.py",
+        ],
+        "create_subdir": True,
+    },
 }
 
 
@@ -96,6 +113,15 @@ def copy_example_files(example_type: str, target_dir: Path, force: bool = False)
                 .joinpath("mcp")
                 .joinpath("state-transfer")
             )
+        elif example_type == "elicitations":
+            # The elicitations example is in the mcp subdirectory
+            source_dir = (
+                files("mcp_agent")
+                .joinpath("resources")
+                .joinpath("examples")
+                .joinpath("mcp")
+                .joinpath("elicitations")
+            )
         else:
             # Other examples are at the top level of examples
             source_dir = (
@@ -114,6 +140,8 @@ def copy_example_files(example_type: str, target_dir: Path, force: bool = False)
             package_dir = Path(__file__).parent.parent.parent.parent.parent
             if example_type == "state-transfer":
                 source_dir = package_dir / "examples" / "mcp" / "state-transfer"
+            elif example_type == "elicitations":
+                source_dir = package_dir / "examples" / "mcp" / "elicitations"
             else:
                 source_dir = (
                     package_dir
@@ -129,6 +157,8 @@ def copy_example_files(example_type: str, target_dir: Path, force: bool = False)
         package_dir = Path(__file__).parent.parent.parent.parent.parent
         if example_type == "state-transfer":
             source_dir = package_dir / "examples" / "mcp" / "state-transfer"
+        elif example_type == "elicitations":
+            source_dir = package_dir / "examples" / "mcp" / "elicitations"
         else:
             source_dir = (
                 package_dir
@@ -197,7 +227,7 @@ def copy_example_files(example_type: str, target_dir: Path, force: bool = False)
 
 def show_overview() -> None:
     """Display an overview of available examples in a nicely formatted table."""
-    console.print("\n[bold cyan]fast-agent Example Applications[/bold cyan]")
+    console.print("\n[bold cyan]fast-agent quickstarts[/bold cyan]")
     console.print("Build agents and compose workflows through practical examples\n")
 
     # Create a table for better organization
@@ -207,29 +237,23 @@ def show_overview() -> None:
     table.add_column("Files")
 
     for name, info in EXAMPLE_TYPES.items():
-        files_list = "\n".join(f"• {f}" for f in info["files"])
+        # Just show file count instead of listing all files
+        file_count = len(info["files"])
+        files_summary = f"{file_count} files"
         if "mount_point_files" in info:
-            files_list += "\n[blue]mount-point:[/blue]\n" + "\n".join(
-                f"• {f}" for f in info["mount_point_files"]
-            )
-        table.add_row(f"[green]{name}[/green]", info["description"], files_list)
+            mount_count = len(info["mount_point_files"])
+            files_summary += f"\n+ {mount_count} data files"
+        table.add_row(f"[green]{name}[/green]", info["description"], files_summary)
 
     console.print(table)
 
     # Show usage instructions in a panel
     usage_text = (
-        "[bold]Commands:[/bold]\n"
-        "  fastagent quickstart workflow DIR      Create workflow examples in DIR\n"
-        "  fastagent quickstart researcher DIR    Create researcher example in 'researcher' subdirectory\n"
-        "  fastagent quickstart data-analysis DIR Create data analysis examples in 'data-analysis' subdirectory\n"
-        "  fastagent quickstart state-transfer DIR Create state transfer examples in 'state-transfer' subdirectory\n\n"
+        "[bold]Usage:[/bold]\n"
+        "  [cyan]fast-agent[/cyan] [green]quickstart[/green] [yellow]<name>[/yellow] [dim]\\[directory][/dim]\n\n"
+        "[dim]directory optionally overrides the default subdirectory name[/dim]\n\n"
         "[bold]Options:[/bold]\n"
-        "  --force            Overwrite existing files\n\n"
-        "[bold]Examples:[/bold]\n"
-        "  fastagent quickstart workflow .              Create in current directory\n"
-        "  fastagent quickstart researcher .            Create in researcher subdirectory\n"
-        "  fastagent quickstart data-analysis . --force Force overwrite files in data-analysis subdirectory\n"
-        "  fastagent quickstart state-transfer .        Create state transfer examples"
+        "  [cyan]--force[/cyan]            Overwrite existing files"
     )
     console.print(Panel(usage_text, title="Usage", border_style="blue"))
 
@@ -306,6 +330,24 @@ def state_transfer(
     _show_completion_message("state-transfer", created)
 
 
+@app.command()
+def elicitations(
+    directory: Path = typer.Argument(
+        Path("."),
+        help="Directory where elicitation examples will be created (in 'elicitations' subdirectory)",
+    ),
+    force: bool = typer.Option(False, "--force", "-f", help="Force overwrite existing files"),
+) -> None:
+    """Create interactive form examples using MCP elicitations."""
+    target_dir = directory.resolve()
+    if not target_dir.exists():
+        target_dir.mkdir(parents=True)
+        console.print(f"Created directory: {target_dir}")
+
+    created = copy_example_files("elicitations", target_dir, force)
+    _show_completion_message("elicitations", created)
+
+
 def _show_completion_message(example_type: str, created: list[str]) -> None:
     """Show completion message and next steps."""
     if created:
@@ -341,13 +383,22 @@ def _show_completion_message(example_type: str, created: list[str]) -> None:
                 "On Windows platforms, please edit the fastagent.config.yaml and adjust the volume mount point."
             )
         elif example_type == "state-transfer":
-            console.print("Check https://fast-agent.ai for quick start walkthroughs")
+            console.print(
+                "Check [cyan][link=https://fast-agent.ai]fast-agent.ai[/link][/cyan] for quick start walkthroughs"
+            )
+        elif example_type == "elicitations":
+            console.print("1. Go to the `elicitations` subdirectory (cd elicitations)")
+            console.print("2. Try the forms demo: uv run forms_demo.py")
+            console.print("3. Run the game character creator: uv run game_character.py")
+            console.print(
+                "Check [cyan][link=https://fast-agent.ai/mcp/elicitations/]https://fast-agent.ai/mcp/elicitations/[/link][/cyan] for more details"
+            )
     else:
         console.print("\n[yellow]No files were created.[/yellow]")
 
 
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context) -> None:
-    """Create example applications and learn FastAgent patterns."""
+    """Quickstart applications for fast-agent."""
     if ctx.invoked_subcommand is None:
         show_overview()

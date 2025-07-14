@@ -10,10 +10,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 from mcp import ServerSession
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
 from opentelemetry.instrumentation.google_genai import GoogleGenAiSdkInstrumentor
-
-# from opentelemetry.instrumentation.mcp import McpInstrumentor
 from opentelemetry.instrumentation.openai import OpenAIInstrumentor
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.sdk.resources import Resource
@@ -25,7 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from mcp_agent.config import Settings, get_settings
 from mcp_agent.executor.executor import AsyncioExecutor, Executor
 from mcp_agent.executor.task_registry import ActivityRegistry
-from mcp_agent.logging.events import EventFilter
+from mcp_agent.logging.events import EventFilter, StreamingExclusionFilter
 from mcp_agent.logging.logger import LoggingConfig, get_logger
 from mcp_agent.logging.transport import create_transport
 from mcp_agent.mcp_server_registry import ServerRegistry
@@ -112,7 +109,7 @@ async def configure_otel(config: "Settings") -> None:
 
     # Set as global tracer provider
     trace.set_tracer_provider(tracer_provider)
-    AnthropicInstrumentor().instrument()
+    #    AnthropicInstrumentor().instrument()
     OpenAIInstrumentor().instrument()
     GoogleGenAiSdkInstrumentor().instrument()
 
@@ -124,7 +121,8 @@ async def configure_logger(config: "Settings") -> None:
     """
     Configure logging and tracing based on the application config.
     """
-    event_filter: EventFilter = EventFilter(min_level=config.logger.level)
+    # Use StreamingExclusionFilter to prevent streaming events from flooding logs
+    event_filter: EventFilter = StreamingExclusionFilter(min_level=config.logger.level)
     logger.info(f"Configuring logger with level: {config.logger.level}")
     transport = create_transport(settings=config.logger, event_filter=event_filter)
     await LoggingConfig.configure(

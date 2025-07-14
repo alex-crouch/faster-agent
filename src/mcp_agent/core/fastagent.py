@@ -54,7 +54,9 @@ from mcp_agent.core.exceptions import (
     ServerConfigError,
     ServerInitializationError,
 )
+from mcp_agent.core.usage_display import display_usage_report
 from mcp_agent.core.validation import (
+    validate_provider_keys_post_creation,
     validate_server_references,
     validate_workflow_references,
 )
@@ -80,7 +82,8 @@ class FastAgent:
         name: str,
         config_path: str | None = None,
         ignore_unknown_args: bool = False,
-        parse_cli_args: bool = True,  # Add new parameter with default True
+        parse_cli_args: bool = True,
+        quiet: bool = False,  # Add quiet parameter
     ) -> None:
         """
         Initialize the fast-agent application.
@@ -93,8 +96,10 @@ class FastAgent:
             parse_cli_args: If True, parse command line arguments using argparse.
                             Set to False when embedding FastAgent in another framework
                             (like FastAPI/Uvicorn) that handles its own arguments.
+            quiet: If True, disable progress display, tool and message logging for cleaner output
         """
         self.args = argparse.Namespace()  # Initialize args always
+        self._programmatic_quiet = quiet  # Store the programmatic quiet setting
 
         # --- Wrap argument parsing logic ---
         if parse_cli_args:
@@ -172,6 +177,10 @@ class FastAgent:
                 sys.exit(0)
         # --- End of wrapped logic ---
 
+        # Apply programmatic quiet setting (overrides CLI if both are set)
+        if self._programmatic_quiet:
+            self.args.quiet = True
+
         self.name = name
         self.config_path = config_path
 
@@ -179,11 +188,25 @@ class FastAgent:
             # Load configuration directly for this instance
             self._load_config()
 
+            # Apply programmatic quiet mode to config before creating app
+            if self._programmatic_quiet and hasattr(self, "config"):
+                if "logger" not in self.config:
+                    self.config["logger"] = {}
+                self.config["logger"]["progress_display"] = False
+                self.config["logger"]["show_chat"] = False
+                self.config["logger"]["show_tools"] = False
+
             # Create the app with our local settings
             self.app = MCPApp(
                 name=name,
                 settings=config.Settings(**self.config) if hasattr(self, "config") else None,
             )
+
+            # Stop progress display immediately if quiet mode is requested
+            if self._programmatic_quiet:
+                from mcp_agent.progress_display import progress_display
+
+                progress_display.stop()
 
         except yaml.parser.ParserError as e:
             handle_error(
@@ -291,6 +314,9 @@ class FastAgent:
                         self.agents,
                         model_factory_func,
                     )
+                    
+                    # Validate API keys after agent creation
+                    validate_provider_keys_post_creation(active_agents)
 
                     # Create a wrapper with all agents for simplified access
                     wrapper = AgentApp(active_agents)
@@ -392,6 +418,10 @@ class FastAgent:
 
                     yield wrapper
 
+            except PromptExitError as e:
+                # User requested exit - not an error, show usage report
+                self._handle_error(e)
+                raise SystemExit(0)
             except (
                 ServerConfigError,
                 ProviderKeyError,
@@ -399,15 +429,18 @@ class FastAgent:
                 ServerInitializationError,
                 ModelConfigError,
                 CircularDependencyError,
-                PromptExitError,
             ) as e:
                 had_error = True
                 self._handle_error(e)
                 raise SystemExit(1)
 
             finally:
-                # Clean up any active agents
+                # Print usage report before cleanup (show for user exits too)
                 if active_agents and not had_error:
+                    self._print_usage_report(active_agents)
+
+                # Clean up any active agents (always cleanup, even on errors)
+                if active_agents:
                     for agent in active_agents.values():
                         try:
                             await agent.shutdown()
@@ -472,9 +505,13 @@ class FastAgent:
         else:
             handle_error(e, error_type or "Error", "An unexpected error occurred.")
 
+    def _print_usage_report(self, active_agents: dict) -> None:
+        """Print a formatted table of token usage for all agents."""
+        display_usage_report(active_agents, show_if_progress_disabled=False, subdued_colors=True)
+
     async def start_server(
         self,
-        transport: str = "sse",
+        transport: str = "http",
         host: str = "0.0.0.0",
         port: int = 8000,
         server_name: Optional[str] = None,

@@ -25,7 +25,6 @@ fast = FastAgent(
     instruction="""Verify the factual consistency within the story. Identify any contradictions,
     logical inconsistencies, or inaccuracies in the plot, character actions, or setting. 
     Highlight potential issues with reasoning or coherence.""",
-    model="gpt-4.1",
 )
 @fast.agent(
     name="style_enforcer",
@@ -40,7 +39,6 @@ fast = FastAgent(
     into a structured report. Summarize key issues and categorize them by type. 
     Provide actionable recommendations for improving the story, 
     and give an overall grade based on the feedback.""",
-    model="o3-mini.low",
 )
 @fast.parallel(
     fan_out=["proofreader", "fact_checker", "style_enforcer"],

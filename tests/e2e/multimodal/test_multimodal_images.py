@@ -55,6 +55,7 @@ async def test_agent_with_image_prompt(fast_agent, model_name):
         "sonnet",  # Anthropic model
         "azure.gpt-4.1",
         "gemini25",
+        "grok-4",
         #    "gemini2",
     ],
 )
@@ -251,8 +252,7 @@ async def test_agent_includes_tool_results_in_multipart_result_openai(fast_agent
                     )
                 ]
             )
-            # Import TextContent for type checking
-            from mcp_agent.mcp_types import TextContent
+            from mcp.types import TextContent
 
             def is_thought_part(part_content):
                 # Check if it's a TextContent and if its text starts with "thought" (case-insensitive)

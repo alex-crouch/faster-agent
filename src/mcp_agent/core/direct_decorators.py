@@ -19,6 +19,8 @@ from typing import (
     cast,
 )
 
+from mcp.client.session import ElicitationFnT
+
 from mcp_agent.agents.agent import AgentConfig
 from mcp_agent.core.agent_types import AgentType
 from mcp_agent.core.request_params import RequestParams
@@ -135,6 +137,8 @@ def _decorator_impl(
             use_history=use_history,
             human_input=human_input,
             default=default,
+            elicitation_handler=extra_kwargs.get("elicitation_handler"),
+            api_key=extra_kwargs.get("api_key"),
         )
 
         # Update request params if provided
@@ -178,6 +182,8 @@ def agent(
     request_params: RequestParams | None = None,
     human_input: bool = False,
     default: bool = False,
+    elicitation_handler: Optional[ElicitationFnT] = None,
+    api_key: str | None = None,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
     """
     Decorator to create and register a standard agent with type-safe signature.
@@ -192,6 +198,7 @@ def agent(
         request_params: Additional request parameters for the LLM
         human_input: Whether to enable human input capabilities
         default: Whether to mark this as the default agent
+        elicitation_handler: Custom elicitation handler function (ElicitationFnT)
 
     Returns:
         A decorator that registers the agent with proper type annotations
@@ -209,6 +216,8 @@ def agent(
         request_params=request_params,
         human_input=human_input,
         default=default,
+        elicitation_handler=elicitation_handler,
+        api_key=api_key,
     )
 
 
@@ -225,6 +234,8 @@ def custom(
     request_params: RequestParams | None = None,
     human_input: bool = False,
     default: bool = False,
+    elicitation_handler: Optional[ElicitationFnT] = None,
+    api_key: str | None = None,
 ) -> Callable[[AgentCallable[P, R]], DecoratedAgentProtocol[P, R]]:
     """
     Decorator to create and register a standard agent with type-safe signature.
@@ -238,6 +249,7 @@ def custom(
         use_history: Whether to maintain conversation history
         request_params: Additional request parameters for the LLM
         human_input: Whether to enable human input capabilities
+        elicitation_handler: Custom elicitation handler function (ElicitationFnT)
 
     Returns:
         A decorator that registers the agent with proper type annotations
@@ -256,6 +268,8 @@ def custom(
         human_input=human_input,
         agent_class=cls,
         default=default,
+        elicitation_handler=elicitation_handler,
+        api_key=api_key,
     )
 
 
@@ -279,6 +293,7 @@ def orchestrator(
     plan_type: Literal["full", "iterative"] = "full",
     plan_iterations: int = 5,
     default: bool = False,
+    api_key: str | None = None,
 ) -> Callable[[AgentCallable[P, R]], DecoratedOrchestratorProtocol[P, R]]:
     """
     Decorator to create and register an orchestrator agent with type-safe signature.
@@ -317,6 +332,7 @@ def orchestrator(
             plan_type=plan_type,
             plan_iterations=plan_iterations,
             default=default,
+            api_key=api_key,
         ),
     )
 
@@ -333,6 +349,10 @@ def router(
     request_params: RequestParams | None = None,
     human_input: bool = False,
     default: bool = False,
+    elicitation_handler: Optional[
+        ElicitationFnT
+    ] = None,  ## exclude from docs, decide whether allowable
+    api_key: str | None = None,
 ) -> Callable[[AgentCallable[P, R]], DecoratedRouterProtocol[P, R]]:
     """
     Decorator to create and register a router agent with type-safe signature.
@@ -346,6 +366,7 @@ def router(
         request_params: Additional request parameters for the LLM
         human_input: Whether to enable human input capabilities
         default: Whether to mark this as the default agent
+        elicitation_handler: Custom elicitation handler function (ElicitationFnT)
 
     Returns:
         A decorator that registers the router with proper type annotations
@@ -369,6 +390,8 @@ def router(
             human_input=human_input,
             default=default,
             router_agents=agents,
+            elicitation_handler=elicitation_handler,
+            api_key=api_key,
         ),
     )
 

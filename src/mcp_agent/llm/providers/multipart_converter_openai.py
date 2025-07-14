@@ -360,7 +360,7 @@ class OpenAIConverter:
             return {
                 "role": "tool",
                 "tool_call_id": tool_call_id,
-                "content": "[No content in tool result]",
+                "content": "[Tool completed successfully]",
             }
 
         # Separate text and non-text content
@@ -387,8 +387,9 @@ class OpenAIConverter:
                 converted.get("content", "")
             )
 
-        if not tool_message_content:
-            tool_message_content = "[Tool returned non-text content]"
+        # Ensure we always have non-empty content for compatibility
+        if not tool_message_content or tool_message_content.strip() == "":
+            tool_message_content = "[Tool completed successfully]"
 
         # Create the tool message with just the text
         tool_message = {

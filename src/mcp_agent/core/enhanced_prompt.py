@@ -40,6 +40,210 @@ in_multiline_mode = False
 # Track whether help text has been shown globally
 help_message_shown = False
 
+# Track which agents have shown their info
+_agent_info_shown = set()
+
+
+async def _display_agent_info_helper(agent_name: str, agent_provider: object) -> None:
+    """Helper function to display agent information."""
+    # Only show once per agent
+    if agent_name in _agent_info_shown:
+        return
+
+    try:
+        # Get agent info
+        if hasattr(agent_provider, "_agent"):
+            # This is an AgentApp - get the specific agent
+            agent = agent_provider._agent(agent_name)
+        else:
+            # This is a single agent
+            agent = agent_provider
+
+        # Get counts
+        servers = await agent.list_servers()
+        server_count = len(servers) if servers else 0
+
+        tools_result = await agent.list_tools()
+        tool_count = (
+            len(tools_result.tools) if tools_result and hasattr(tools_result, "tools") else 0
+        )
+
+        prompts_dict = await agent.list_prompts()
+        prompt_count = sum(len(prompts) for prompts in prompts_dict.values()) if prompts_dict else 0
+
+        # Handle different agent types
+        if agent.agent_type == AgentType.PARALLEL:
+            # Count child agents for parallel agents
+            child_count = 0
+            if hasattr(agent, "fan_out_agents") and agent.fan_out_agents:
+                child_count += len(agent.fan_out_agents)
+            if hasattr(agent, "fan_in_agent") and agent.fan_in_agent:
+                child_count += 1
+
+            if child_count > 0:
+                child_word = "child agent" if child_count == 1 else "child agents"
+                rich_print(
+                    f"[dim]Agent [/dim][blue]{agent_name}[/blue][dim]:[/dim] {child_count:,}[dim] {child_word}[/dim]"
+                )
+        elif agent.agent_type == AgentType.ROUTER:
+            # Count child agents for router agents
+            child_count = 0
+            if hasattr(agent, "routing_agents") and agent.routing_agents:
+                child_count = len(agent.routing_agents)
+            elif hasattr(agent, "agents") and agent.agents:
+                child_count = len(agent.agents)
+
+            if child_count > 0:
+                child_word = "child agent" if child_count == 1 else "child agents"
+                rich_print(
+                    f"[dim]Agent [/dim][blue]{agent_name}[/blue][dim]:[/dim] {child_count:,}[dim] {child_word}[/dim]"
+                )
+        else:
+            # For regular agents, only display if they have MCP servers attached
+            if server_count > 0:
+                # Pluralization helpers
+                server_word = "Server" if server_count == 1 else "Servers"
+                tool_word = "tool" if tool_count == 1 else "tools"
+                prompt_word = "prompt" if prompt_count == 1 else "prompts"
+
+                rich_print(
+                    f"[dim]Agent [/dim][blue]{agent_name}[/blue][dim]:[/dim] {server_count:,}[dim] MCP {server_word}, [/dim]{tool_count:,}[dim] {tool_word}, [/dim]{prompt_count:,}[dim] {prompt_word} available[/dim]"
+                )
+
+        # Mark as shown
+        _agent_info_shown.add(agent_name)
+
+    except Exception:
+        # Silently ignore errors to not disrupt the user experience
+        pass
+
+
+async def _display_all_agents_with_hierarchy(available_agents: List[str], agent_provider) -> None:
+    """Display all agents with tree structure for workflow agents."""
+    # Track which agents are children to avoid displaying them twice
+    child_agents = set()
+
+    # First pass: identify all child agents
+    for agent_name in available_agents:
+        try:
+            if hasattr(agent_provider, "_agent"):
+                agent = agent_provider._agent(agent_name)
+            else:
+                agent = agent_provider
+
+            if agent.agent_type == AgentType.PARALLEL:
+                if hasattr(agent, "fan_out_agents") and agent.fan_out_agents:
+                    for child_agent in agent.fan_out_agents:
+                        child_agents.add(child_agent.name)
+                if hasattr(agent, "fan_in_agent") and agent.fan_in_agent:
+                    child_agents.add(agent.fan_in_agent.name)
+            elif agent.agent_type == AgentType.ROUTER:
+                if hasattr(agent, "routing_agents") and agent.routing_agents:
+                    for child_agent in agent.routing_agents:
+                        child_agents.add(child_agent.name)
+                elif hasattr(agent, "agents") and agent.agents:
+                    for child_agent in agent.agents:
+                        child_agents.add(child_agent.name)
+        except Exception:
+            continue
+
+    # Second pass: display agents (parents with children, standalone agents without children)
+    for agent_name in sorted(available_agents):
+        # Skip if this agent is a child of another agent
+        if agent_name in child_agents:
+            continue
+
+        try:
+            if hasattr(agent_provider, "_agent"):
+                agent = agent_provider._agent(agent_name)
+            else:
+                agent = agent_provider
+
+            # Display parent agent
+            await _display_agent_info_helper(agent_name, agent_provider)
+
+            # If it's a workflow agent, display its children
+            if agent.agent_type == AgentType.PARALLEL:
+                await _display_parallel_children(agent, agent_provider)
+            elif agent.agent_type == AgentType.ROUTER:
+                await _display_router_children(agent, agent_provider)
+
+        except Exception:
+            continue
+
+
+async def _display_parallel_children(parallel_agent, agent_provider) -> None:
+    """Display child agents of a parallel agent in tree format."""
+    children = []
+
+    # Collect fan-out agents
+    if hasattr(parallel_agent, "fan_out_agents") and parallel_agent.fan_out_agents:
+        for child_agent in parallel_agent.fan_out_agents:
+            children.append(child_agent)
+
+    # Collect fan-in agent
+    if hasattr(parallel_agent, "fan_in_agent") and parallel_agent.fan_in_agent:
+        children.append(parallel_agent.fan_in_agent)
+
+    # Display children with tree formatting
+    for i, child_agent in enumerate(children):
+        is_last = i == len(children) - 1
+        prefix = "└─" if is_last else "├─"
+        await _display_child_agent_info(child_agent, prefix, agent_provider)
+
+
+async def _display_router_children(router_agent, agent_provider) -> None:
+    """Display child agents of a router agent in tree format."""
+    children = []
+
+    # Collect routing agents
+    if hasattr(router_agent, "routing_agents") and router_agent.routing_agents:
+        children = router_agent.routing_agents
+    elif hasattr(router_agent, "agents") and router_agent.agents:
+        children = router_agent.agents
+
+    # Display children with tree formatting
+    for i, child_agent in enumerate(children):
+        is_last = i == len(children) - 1
+        prefix = "└─" if is_last else "├─"
+        await _display_child_agent_info(child_agent, prefix, agent_provider)
+
+
+async def _display_child_agent_info(child_agent, prefix: str, agent_provider) -> None:
+    """Display info for a child agent with tree prefix."""
+    try:
+        # Get counts for child agent
+        servers = await child_agent.list_servers()
+        server_count = len(servers) if servers else 0
+
+        tools_result = await child_agent.list_tools()
+        tool_count = (
+            len(tools_result.tools) if tools_result and hasattr(tools_result, "tools") else 0
+        )
+
+        prompts_dict = await child_agent.list_prompts()
+        prompt_count = sum(len(prompts) for prompts in prompts_dict.values()) if prompts_dict else 0
+
+        # Only display if child has MCP servers
+        if server_count > 0:
+            # Pluralization helpers
+            server_word = "Server" if server_count == 1 else "Servers"
+            tool_word = "tool" if tool_count == 1 else "tools"
+            prompt_word = "prompt" if prompt_count == 1 else "prompts"
+
+            rich_print(
+                f"[dim]  {prefix} [/dim][blue]{child_agent.name}[/blue][dim]:[/dim] {server_count:,}[dim] MCP {server_word}, [/dim]{tool_count:,}[dim] {tool_word}, [/dim]{prompt_count:,}[dim] {prompt_word} available[/dim]"
+            )
+        else:
+            # Show child even without MCP servers for context
+            rich_print(
+                f"[dim]  {prefix} [/dim][blue]{child_agent.name}[/blue][dim]: No MCP Servers[/dim]"
+            )
+
+    except Exception:
+        # Fallback: just show the name
+        rich_print(f"[dim]  {prefix} [/dim][blue]{child_agent.name}[/blue]")
+
 
 class AgentCompleter(Completer):
     """Provide completion for agent names and common commands."""
@@ -54,10 +258,11 @@ class AgentCompleter(Completer):
         self.agents = agents
         # Map commands to their descriptions for better completion hints
         self.commands = {
-            "help": "Show available commands",
-            "prompts": "List and select MCP prompts",  # Changed description
-            "prompt": "Apply a specific prompt by name (/prompt <name>)",  # New command
+            "tools": "List and call MCP tools",
+            "prompt": "List and select MCP prompts, or apply specific prompt (/prompt <name>)",
             "agents": "List available agents",
+            "usage": "Show current usage statistics",
+            "help": "Show available commands",
             "clear": "Clear the screen",
             "STOP": "Stop this prompting session and move to next workflow step",
             "EXIT": "Exit fast-agent, terminating any running workflows",
@@ -65,8 +270,9 @@ class AgentCompleter(Completer):
         }
         if is_human_input:
             self.commands.pop("agents")
-            self.commands.pop("prompts")  # Remove prompts command in human input mode
             self.commands.pop("prompt", None)  # Remove prompt command in human input mode
+            self.commands.pop("tools", None)  # Remove tools command in human input mode
+            self.commands.pop("usage", None)  # Remove usage command in human input mode
         self.agent_types = agent_types or {}
 
     def get_completions(self, document, complete_event):
@@ -258,6 +464,7 @@ async def get_enhanced_input(
     agent_types: dict[str, AgentType] = None,
     is_human_input: bool = False,
     toolbar_color: str = "ansiblue",
+    agent_provider: object = None,
 ) -> str:
     """
     Enhanced input with advanced prompt_toolkit features.
@@ -272,6 +479,7 @@ async def get_enhanced_input(
         agent_types: Dictionary mapping agent names to their types for display
         is_human_input: Whether this is a human input request (disables agent selection features)
         toolbar_color: Color to use for the agent name in the toolbar (default: "ansiblue")
+        agent_provider: Optional agent provider for displaying agent info
 
     Returns:
         User input string
@@ -298,14 +506,15 @@ async def get_enhanced_input(
         if in_multiline_mode:
             mode_style = "ansired"  # More noticeable for multiline mode
             mode_text = "MULTILINE"
-            toggle_text = "Normal Editing"
+            toggle_text = "Normal"
         else:
             mode_style = "ansigreen"
             mode_text = "NORMAL"
-            toggle_text = "Multiline Editing"
+            toggle_text = "Multiline"
 
         shortcuts = [
             ("Ctrl+T", toggle_text),
+            ("Ctrl+E", "External"),
             ("Ctrl+L", "Clear"),
             ("↑/↓", "History"),
         ]
@@ -371,8 +580,14 @@ async def get_enhanced_input(
             rich_print("[dim]Type /help for commands. Ctrl+T toggles multiline mode.[/dim]")
         else:
             rich_print(
-                "[dim]Type /help for commands, @agent to switch agent. Ctrl+T toggles multiline mode.[/dim]"
+                "[dim]Type '/' for commands, '@' to switch agent. Ctrl+T multiline, CTRL+E external editor.[/dim]\n"
             )
+
+            # Display agent info right after help text if agent_provider is available
+            if agent_provider and not is_human_input:
+                # Display info for all available agents with tree structure for workflows
+                await _display_all_agents_with_hierarchy(available_agents, agent_provider)
+
         rich_print()
         help_message_shown = True
 
@@ -390,12 +605,10 @@ async def get_enhanced_input(
                 return "CLEAR"
             elif cmd == "agents":
                 return "LIST_AGENTS"
-            elif cmd == "prompts":
-                # Return a dictionary with select_prompt action instead of a string
-                # This way it will match what the command handler expects
-                return {"select_prompt": True, "prompt_name": None}
+            elif cmd == "usage":
+                return "SHOW_USAGE"
             elif cmd == "prompt":
-                # Handle /prompt with no arguments the same way as /prompts
+                # Handle /prompt with no arguments as interactive mode
                 if len(cmd_parts) > 1:
                     # Direct prompt selection with name or number
                     prompt_arg = cmd_parts[1].strip()
@@ -405,8 +618,11 @@ async def get_enhanced_input(
                     else:
                         return f"SELECT_PROMPT:{prompt_arg}"
                 else:
-                    # If /prompt is used without arguments, treat it the same as /prompts
+                    # If /prompt is used without arguments, show interactive selection
                     return {"select_prompt": True, "prompt_name": None}
+            elif cmd == "tools":
+                # Return a dictionary with list_tools action
+                return {"list_tools": True}
             elif cmd == "exit":
                 return "EXIT"
             elif cmd.lower() == "stop":
@@ -566,6 +782,7 @@ async def handle_special_commands(command, agent_app=None):
         rich_print("  /agents        - List available agents")
         rich_print("  /prompts       - List and select MCP prompts")
         rich_print("  /prompt <name> - Apply a specific prompt by name")
+        rich_print("  /usage         - Show current usage statistics")
         rich_print("  @agent_name    - Switch to agent")
         rich_print("  STOP           - Return control back to the workflow")
         rich_print("  EXIT           - Exit fast-agent, terminating any running workflows")
@@ -593,6 +810,10 @@ async def handle_special_commands(command, agent_app=None):
         else:
             rich_print("[yellow]No agents available[/yellow]")
         return True
+
+    elif command == "SHOW_USAGE":
+        # Return a dictionary to signal that usage should be shown
+        return {"show_usage": True}
 
     elif command == "SELECT_PROMPT" or (
         isinstance(command, str) and command.startswith("SELECT_PROMPT:")

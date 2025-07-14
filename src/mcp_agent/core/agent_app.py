@@ -6,10 +6,13 @@ from typing import Dict, List, Optional, Union
 
 from deprecated import deprecated
 from mcp.types import PromptMessage
+from rich import print as rich_print
 
 from mcp_agent.agents.agent import Agent
+from mcp_agent.core.agent_types import AgentType
 from mcp_agent.core.interactive_prompt import InteractivePrompt
 from mcp_agent.mcp.prompt_message_multipart import PromptMessageMultipart
+from mcp_agent.progress_display import progress_display
 
 
 class AgentApp:
@@ -232,13 +235,14 @@ class AgentApp:
         """
         return await self.interactive(agent_name=agent_name, default_prompt=default_prompt)
 
-    async def interactive(self, agent_name: str | None = None, default_prompt: str = "") -> str:
+    async def interactive(self, agent_name: str | None = None, default_prompt: str = "", pretty_print_parallel: bool = False) -> str:
         """
         Interactive prompt for sending messages with advanced features.
 
         Args:
             agent_name: Optional target agent name (uses default if not specified)
             default: Default message to use when user presses enter
+            pretty_print_parallel: Enable clean parallel results display for parallel agents
 
         Returns:
             The result of the interactive session
@@ -272,7 +276,20 @@ class AgentApp:
 
         # Define the wrapper for send function
         async def send_wrapper(message, agent_name):
-            return await self.send(message, agent_name)
+            result = await self.send(message, agent_name)
+
+            # Show parallel results if enabled and this is a parallel agent
+            if pretty_print_parallel:
+                agent = self._agents.get(agent_name)
+                if agent and agent.agent_type == AgentType.PARALLEL:
+                    from mcp_agent.ui.console_display import ConsoleDisplay
+                    display = ConsoleDisplay(config=None)
+                    display.show_parallel_results(agent)
+
+            # Show usage info after each turn if progress display is enabled
+            self._show_turn_usage(agent_name)
+
+            return result
 
         # Start the prompt loop with the agent name (not the agent object)
         return await prompt.prompt_loop(
@@ -282,3 +299,115 @@ class AgentApp:
             prompt_provider=self,  # Pass self as the prompt provider
             default=default_prompt,
         )
+
+    def _show_turn_usage(self, agent_name: str) -> None:
+        """Show subtle usage information after each turn."""
+        agent = self._agents.get(agent_name)
+        if not agent:
+            return
+
+        # Check if this is a parallel agent
+        if agent.agent_type == AgentType.PARALLEL:
+            self._show_parallel_agent_usage(agent)
+        else:
+            self._show_regular_agent_usage(agent)
+
+    def _show_regular_agent_usage(self, agent) -> None:
+        """Show usage for a regular (non-parallel) agent."""
+        usage_info = self._format_agent_usage(agent)
+        if usage_info:
+            with progress_display.paused():
+                rich_print(
+                    f"[dim]Last turn: {usage_info['display_text']}[/dim]{usage_info['cache_suffix']}"
+                )
+
+    def _show_parallel_agent_usage(self, parallel_agent) -> None:
+        """Show usage for a parallel agent and its children."""
+        # Collect usage from all child agents
+        child_usage_data = []
+        total_input = 0
+        total_output = 0
+        total_tool_calls = 0
+
+        # Get usage from fan-out agents
+        if hasattr(parallel_agent, "fan_out_agents") and parallel_agent.fan_out_agents:
+            for child_agent in parallel_agent.fan_out_agents:
+                usage_info = self._format_agent_usage(child_agent)
+                if usage_info:
+                    child_usage_data.append({**usage_info, "name": child_agent.name})
+                    total_input += usage_info["input_tokens"]
+                    total_output += usage_info["output_tokens"]
+                    total_tool_calls += usage_info["tool_calls"]
+
+        # Get usage from fan-in agent
+        if hasattr(parallel_agent, "fan_in_agent") and parallel_agent.fan_in_agent:
+            usage_info = self._format_agent_usage(parallel_agent.fan_in_agent)
+            if usage_info:
+                child_usage_data.append({**usage_info, "name": parallel_agent.fan_in_agent.name})
+                total_input += usage_info["input_tokens"]
+                total_output += usage_info["output_tokens"]
+                total_tool_calls += usage_info["tool_calls"]
+
+        if not child_usage_data:
+            return
+
+        # Show aggregated usage for parallel agent (no context percentage)
+        with progress_display.paused():
+            tool_info = f", {total_tool_calls} tool calls" if total_tool_calls > 0 else ""
+            rich_print(
+                f"[dim]Last turn (parallel): {total_input:,} Input, {total_output:,} Output{tool_info}[/dim]"
+            )
+
+            # Show individual child agent usage
+            for i, usage_data in enumerate(child_usage_data):
+                is_last = i == len(child_usage_data) - 1
+                prefix = "└─" if is_last else "├─"
+                rich_print(
+                    f"[dim]  {prefix} {usage_data['name']}: {usage_data['display_text']}[/dim]{usage_data['cache_suffix']}"
+                )
+
+    def _format_agent_usage(self, agent) -> Optional[Dict]:
+        """Format usage information for a single agent."""
+        if not agent or not agent.usage_accumulator:
+            return None
+
+        # Get the last turn's usage (if any)
+        turns = agent.usage_accumulator.turns
+        if not turns:
+            return None
+
+        last_turn = turns[-1]
+        input_tokens = last_turn.display_input_tokens
+        output_tokens = last_turn.output_tokens
+
+        # Build cache indicators with bright colors
+        cache_indicators = ""
+        if last_turn.cache_usage.cache_write_tokens > 0:
+            cache_indicators += "[bright_yellow]^[/bright_yellow]"
+        if (
+            last_turn.cache_usage.cache_read_tokens > 0
+            or last_turn.cache_usage.cache_hit_tokens > 0
+        ):
+            cache_indicators += "[bright_green]*[/bright_green]"
+
+        # Build context percentage - get from accumulator, not individual turn
+        context_info = ""
+        context_percentage = agent.usage_accumulator.context_usage_percentage
+        if context_percentage is not None:
+            context_info = f" ({context_percentage:.1f}%)"
+
+        # Build tool call info
+        tool_info = f", {last_turn.tool_calls} tool calls" if last_turn.tool_calls > 0 else ""
+
+        # Build display text
+        display_text = f"{input_tokens:,} Input, {output_tokens:,} Output{tool_info}{context_info}"
+        cache_suffix = f" {cache_indicators}" if cache_indicators else ""
+
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "tool_calls": last_turn.tool_calls,
+            "context_percentage": context_percentage,
+            "display_text": display_text,
+            "cache_suffix": cache_suffix,
+        }

@@ -28,7 +28,7 @@ class ConsoleDisplay:
         self.config = config
         self._markup = config.logger.enable_markup if config else True
 
-    def show_tool_result(self, result: CallToolResult) -> None:
+    def show_tool_result(self, result: CallToolResult, name: Optional[str] = None) -> None:
         """Display a tool result in a formatted panel."""
         if not self.config or not self.config.logger.show_tools:
             return
@@ -37,10 +37,10 @@ class ConsoleDisplay:
 
         panel = Panel(
             Text(str(result.content), overflow="..."),
-            title="[TOOL RESULT]",
+            title=f"[TOOL RESULT]{f' ({name})' if name else ''}",
             title_align="right",
             style=style,
-            border_style="bold white",
+            border_style="white",
             padding=(1, 2),
         )
 
@@ -51,17 +51,17 @@ class ConsoleDisplay:
         console.console.print(panel, markup=self._markup)
         console.console.print("\n")
 
-    def show_oai_tool_result(self, result) -> None:
+    def show_oai_tool_result(self, result, name: Optional[str] = None) -> None:
         """Display an OpenAI tool result in a formatted panel."""
         if not self.config or not self.config.logger.show_tools:
             return
 
         panel = Panel(
             Text(str(result), overflow="..."),
-            title="[TOOL RESULT]",
+            title=f"[TOOL RESULT]{f' ({name})' if name else ''}",
             title_align="right",
             style="magenta",
-            border_style="bold white",
+            border_style="white",
             padding=(1, 2),
         )
 
@@ -72,7 +72,9 @@ class ConsoleDisplay:
         console.console.print(panel, markup=self._markup)
         console.console.print("\n")
 
-    def show_tool_call(self, available_tools, tool_name, tool_args) -> None:
+    def show_tool_call(
+        self, available_tools, tool_name, tool_args, name: Optional[str] = None
+    ) -> None:
         """Display a tool call in a formatted panel."""
         if not self.config or not self.config.logger.show_tools:
             return
@@ -81,10 +83,10 @@ class ConsoleDisplay:
 
         panel = Panel(
             Text(str(tool_args), overflow="ellipsis"),
-            title="[TOOL CALL]",
+            title=f"[TOOL CALL]{f' ({name})' if name else ''}",
             title_align="left",
             style="magenta",
-            border_style="bold white",
+            border_style="white",
             subtitle=display_tool_list,
             subtitle_align="left",
             padding=(1, 2),
@@ -114,7 +116,7 @@ class ConsoleDisplay:
             title="[TOOL UPDATE]",
             title_align="left",
             style="green",
-            border_style="bold white",
+            border_style="white",
             padding=(1, 2),
             subtitle=display_server_list,
             subtitle_align="left",
@@ -195,7 +197,7 @@ class ConsoleDisplay:
             title=f"[{title}]{f' ({name})' if name else ''}",
             title_align="left",
             style="green",
-            border_style="bold white",
+            border_style="white",
             padding=(1, 2),
             subtitle=display_server_list,
             subtitle_align="left",
@@ -219,7 +221,7 @@ class ConsoleDisplay:
             title=f"{f'({name}) [USER]' if name else '[USER]'}",
             title_align="right",
             style="blue",
-            border_style="bold white",
+            border_style="white",
             padding=(1, 2),
             subtitle=subtitle_text,
             subtitle_align="left",
@@ -292,7 +294,7 @@ class ConsoleDisplay:
             title="[PROMPT LOADED]",
             title_align="right",
             style="cyan",
-            border_style="bold white",
+            border_style="white",
             padding=(1, 2),
             subtitle=display_server_list,
             subtitle_align="left",
@@ -300,3 +302,113 @@ class ConsoleDisplay:
 
         console.console.print(panel, markup=self._markup)
         console.console.print("\n")
+
+    def show_parallel_results(self, parallel_agent) -> None:
+        """Display parallel agent results in a clean, organized format.
+        
+        Args:
+            parallel_agent: The parallel agent containing fan_out_agents with results
+        """
+        from rich.markdown import Markdown
+        from rich.text import Text
+        
+        if self.config and not self.config.logger.show_chat:
+            return
+            
+        if not parallel_agent or not hasattr(parallel_agent, 'fan_out_agents'):
+            return
+        
+        # Collect results and agent information
+        agent_results = []
+        
+        for agent in parallel_agent.fan_out_agents:
+            # Get the last response text from this agent
+            message_history = agent.message_history
+            if not message_history:
+                continue
+                
+            last_message = message_history[-1]
+            content = last_message.last_text()
+            
+            # Get model name
+            model = 'unknown'
+            if hasattr(agent, '_llm') and agent._llm and hasattr(agent._llm, 'default_request_params'):
+                model = getattr(agent._llm.default_request_params, 'model', 'unknown')
+            
+            # Get usage information
+            tokens = 0
+            tool_calls = 0
+            if hasattr(agent, 'usage_accumulator') and agent.usage_accumulator:
+                summary = agent.usage_accumulator.get_summary()
+                tokens = summary.get('cumulative_input_tokens', 0) + summary.get('cumulative_output_tokens', 0)
+                tool_calls = summary.get('cumulative_tool_calls', 0)
+            
+            agent_results.append({
+                'name': agent.name,
+                'model': model,
+                'content': content,
+                'tokens': tokens,
+                'tool_calls': tool_calls
+            })
+        
+        if not agent_results:
+            return
+        
+        # Display header
+        console.console.print()
+        console.console.print("[dim]Parallel execution complete[/dim]")
+        console.console.print()
+        
+        # Display results for each agent
+        for i, result in enumerate(agent_results):
+            if i > 0:
+                # Simple full-width separator
+                console.console.print()
+                console.console.print("─" * console.console.size.width, style="dim")
+                console.console.print()
+            
+            # Two column header: model name (green) + usage info (dim)
+            left = f"[green]▎[/green] [bold green]{result['model']}[/bold green]"
+            
+            # Build right side with tokens and tool calls if available
+            right_parts = []
+            if result['tokens'] > 0:
+                right_parts.append(f"{result['tokens']:,} tokens")
+            if result['tool_calls'] > 0:
+                right_parts.append(f"{result['tool_calls']} tools")
+            
+            right = f"[dim]{' • '.join(right_parts) if right_parts else 'no usage data'}[/dim]"
+            
+            # Calculate padding to right-align usage info
+            width = console.console.size.width
+            left_text = Text.from_markup(left)
+            right_text = Text.from_markup(right)
+            padding = max(1, width - left_text.cell_len - right_text.cell_len)
+            
+            console.console.print(left + " " * padding + right, markup=self._markup)
+            console.console.print()
+            
+            # Display content as markdown if it looks like markdown, otherwise as text
+            content = result['content']
+            if any(marker in content for marker in ['##', '**', '*', '`', '---', '###']):
+                md = Markdown(content)
+                console.console.print(md, markup=self._markup)
+            else:
+                console.console.print(content, markup=self._markup)
+        
+        # Summary
+        console.console.print()
+        console.console.print("─" * console.console.size.width, style="dim")
+        
+        total_tokens = sum(result['tokens'] for result in agent_results)
+        total_tools = sum(result['tool_calls'] for result in agent_results)
+        
+        summary_parts = [f"{len(agent_results)} models"]
+        if total_tokens > 0:
+            summary_parts.append(f"{total_tokens:,} tokens")
+        if total_tools > 0:
+            summary_parts.append(f"{total_tools} tools")
+        
+        summary_text = " • ".join(summary_parts)
+        console.console.print(f"[dim]{summary_text}[/dim]")
+        console.console.print()

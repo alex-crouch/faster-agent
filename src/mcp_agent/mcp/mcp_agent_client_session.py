@@ -13,7 +13,12 @@ from mcp.shared.session import (
     ReceiveResultT,
     SendRequestT,
 )
-from mcp.types import Implementation, ListRootsResult, Root, ToolListChangedNotification
+from mcp.types import (
+    Implementation,
+    ListRootsResult,
+    Root,
+    ToolListChangedNotification,
+)
 from pydantic import FileUrl
 
 from mcp_agent.context_dependent import ContextDependent
@@ -71,6 +76,12 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
         self.server_config: MCPServerSettings | None = kwargs.pop("server_config", None)
         # Extract agent_model if provided (for auto_sampling fallback)
         self.agent_model: str | None = kwargs.pop("agent_model", None)
+        # Extract agent_name if provided
+        self.agent_name: str | None = kwargs.pop("agent_name", None)
+        # Extract api_key if provided
+        self.api_key: str | None = kwargs.pop("api_key", None)
+        # Extract custom elicitation handler if provided
+        custom_elicitation_handler = kwargs.pop("elicitation_handler", None)
 
         # Only register callbacks if the server_config has the relevant settings
         list_roots_cb = list_roots if (self.server_config and self.server_config.roots) else None
@@ -90,12 +101,46 @@ class MCPAgentClientSession(ClientSession, ContextDependent):
             # Auto-sampling enabled at application level
             sampling_cb = sample
 
+        # Use custom elicitation handler if provided, otherwise resolve using factory
+        if custom_elicitation_handler is not None:
+            elicitation_handler = custom_elicitation_handler
+        else:
+            # Try to resolve using factory
+            elicitation_handler = None
+            try:
+                from mcp_agent.context import get_current_context
+                from mcp_agent.core.agent_types import AgentConfig
+                from mcp_agent.mcp.elicitation_factory import resolve_elicitation_handler
+
+                context = get_current_context()
+                if context and context.config:
+                    # Create a minimal agent config for the factory
+                    agent_config = AgentConfig(
+                        name=self.agent_name or "unknown",
+                        model=self.agent_model or "unknown",
+                        elicitation_handler=None,  # No decorator-level handler since we're in the else block
+                    )
+                    elicitation_handler = resolve_elicitation_handler(
+                        agent_config, context.config, self.server_config
+                    )
+            except Exception:
+                # If factory resolution fails, we'll use default fallback
+                pass
+
+            # Fallback to forms handler only if factory resolution wasn't attempted
+            # If factory was attempted and returned None, respect that (means no elicitation capability)
+            if elicitation_handler is None and not self.server_config:
+                from mcp_agent.mcp.elicitation_handlers import forms_elicitation_handler
+
+                elicitation_handler = forms_elicitation_handler
+
         super().__init__(
             *args,
             **kwargs,
             list_roots_callback=list_roots_cb,
             sampling_callback=sampling_cb,
             client_info=fast_agent,
+            elicitation_callback=elicitation_handler,
         )
 
     def _should_enable_auto_sampling(self) -> bool:

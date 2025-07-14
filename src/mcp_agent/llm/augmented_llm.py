@@ -30,11 +30,13 @@ from mcp_agent.core.prompt import Prompt
 from mcp_agent.core.request_params import RequestParams
 from mcp_agent.event_progress import ProgressAction
 from mcp_agent.llm.memory import Memory, SimpleMemory
+from mcp_agent.llm.model_database import ModelDatabase
 from mcp_agent.llm.provider_types import Provider
 from mcp_agent.llm.sampling_format_converter import (
     BasicFormatConverter,
     ProviderFormatConverter,
 )
+from mcp_agent.llm.usage_tracking import TurnUsage, UsageAccumulator
 from mcp_agent.logging.logger import get_logger
 from mcp_agent.mcp.helpers.content_helpers import get_text
 from mcp_agent.mcp.interfaces import (
@@ -95,6 +97,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
     PARAM_USE_HISTORY = "use_history"
     PARAM_MAX_ITERATIONS = "max_iterations"
     PARAM_TEMPLATE_VARS = "template_vars"
+
     # Base set of fields that should always be excluded
     BASE_EXCLUDE_FIELDS = {PARAM_METADATA}
 
@@ -120,6 +123,7 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         ] = BasicFormatConverter,
         context: Optional["Context"] = None,
         model: Optional[str] = None,
+        api_key: Optional[str] = None,
         **kwargs: dict[str, Any],
     ) -> None:
         """
@@ -155,12 +159,14 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         # Initialize the display component
         self.display = ConsoleDisplay(config=self.context.config)
 
-        # Initialize default parameters
-        self.default_request_params = self._initialize_default_params(kwargs)
+        # Tool call counter for current turn
+        self._current_turn_tool_calls = 0
 
-        # Apply model override if provided
+        # Initialize default parameters, passing model info
+        model_kwargs = kwargs.copy()
         if model:
-            self.default_request_params.model = model
+            model_kwargs["model"] = model
+        self.default_request_params = self._initialize_default_params(model_kwargs)
 
         # Merge with provided params if any
         if self._init_request_params:
@@ -171,13 +177,24 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         self.type_converter = type_converter
         self.verb = kwargs.get("verb")
 
+        self._init_api_key = api_key
+
+        # Initialize usage tracking
+        self.usage_accumulator = UsageAccumulator()
+
     def _initialize_default_params(self, kwargs: dict) -> RequestParams:
         """Initialize default parameters for the LLM.
         Should be overridden by provider implementations to set provider-specific defaults."""
+        # Get model-aware default max tokens
+        model = kwargs.get("model")
+        max_tokens = ModelDatabase.get_default_max_tokens(model)
+
         return RequestParams(
+            model=model,
+            maxTokens=max_tokens,
             systemPrompt=self.instruction,
             parallel_tool_calls=True,
-            max_iterations=10,
+            max_iterations=20,
             use_history=True,
         )
 
@@ -361,16 +378,28 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         # Start with base arguments
         arguments = base_args.copy()
 
-        # Use provided exclude_fields or fall back to base exclusions
-        exclude_fields = exclude_fields or self.BASE_EXCLUDE_FIELDS.copy()
+        # Combine base exclusions with provider-specific exclusions
+        final_exclude_fields = self.BASE_EXCLUDE_FIELDS.copy()
+        if exclude_fields:
+            final_exclude_fields.update(exclude_fields)
 
         # Add all fields from params that aren't explicitly excluded
-        params_dict = request_params.model_dump(exclude=exclude_fields)
+        # Ensure model_dump only includes set fields if that's the desired behavior,
+        # or adjust exclude_unset=True/False as needed.
+        # Default Pydantic v2 model_dump is exclude_unset=False
+        params_dict = request_params.model_dump(exclude=final_exclude_fields)
+
         for key, value in params_dict.items():
+            # Only add if not None and not already in base_args (base_args take precedence)
+            # or if None is a valid value for the provider, this logic might need adjustment.
             if value is not None and key not in arguments:
+                arguments[key] = value
+            elif value is not None and key in arguments and arguments[key] is None:
+                # Allow overriding a None in base_args with a set value from params
                 arguments[key] = value
 
         # Finally, add any metadata fields as a last layer of overrides
+        # This ensures metadata can override anything previously set if keys conflict.
         if request_params.metadata:
             arguments.update(request_params.metadata)
 
@@ -417,15 +446,25 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
 
     def show_tool_result(self, result: CallToolResult) -> None:
         """Display a tool result in a formatted panel."""
-        self.display.show_tool_result(result)
+        self.display.show_tool_result(result, name=self.name)
 
     def show_oai_tool_result(self, result: str) -> None:
         """Display a tool result in a formatted panel."""
-        self.display.show_oai_tool_result(result)
+        self.display.show_oai_tool_result(result, name=self.name)
 
     def show_tool_call(self, available_tools, tool_name, tool_args) -> None:
         """Display a tool call in a formatted panel."""
-        self.display.show_tool_call(available_tools, tool_name, tool_args)
+        self._current_turn_tool_calls += 1
+        self.display.show_tool_call(available_tools, tool_name, tool_args, name=self.name)
+
+    def _reset_turn_tool_calls(self) -> None:
+        """Reset tool call counter for new turn."""
+        self._current_turn_tool_calls = 0
+
+    def _finalize_turn_usage(self, turn_usage: "TurnUsage") -> None:
+        """Set tool call count on TurnUsage and add to accumulator."""
+        turn_usage.set_tool_calls(self._current_turn_tool_calls)
+        self.usage_accumulator.add_turn(turn_usage)
 
     async def show_assistant_message(
         self,
@@ -530,6 +569,37 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
             "chat_turn": chat_turn if chat_turn is not None else None,
         }
         self.logger.debug("Chat in progress", data=data)
+
+    def _update_streaming_progress(self, content: str, model: str, estimated_tokens: int) -> int:
+        """Update streaming progress with token estimation and formatting.
+
+        Args:
+            content: The text content from the streaming event
+            model: The model name
+            estimated_tokens: Current token count to update
+
+        Returns:
+            Updated estimated token count
+        """
+        # Rough estimate: 1 token per 4 characters (OpenAI's typical ratio)
+        text_length = len(content)
+        additional_tokens = max(1, text_length // 4)
+        new_total = estimated_tokens + additional_tokens
+
+        # Format token count for display
+        token_str = str(new_total).rjust(5)
+
+        # Emit progress event
+        data = {
+            "progress_action": ProgressAction.STREAMING,
+            "model": model,
+            "agent_name": self.name,
+            "chat_turn": self.chat_turn(),
+            "details": token_str.strip(),  # Token count goes in details for STREAMING action
+        }
+        self.logger.info("Streaming progress", data=data)
+
+        return new_total
 
     def _log_chat_finished(self, model: Optional[str] = None) -> None:
         """Log a chat finished event"""
@@ -638,7 +708,20 @@ class AugmentedLLM(ContextDependent, AugmentedLLMProtocol, Generic[MessageParamT
         return self._message_history
 
     def _api_key(self):
+        if self._init_api_key:
+            return self._init_api_key
+
         from mcp_agent.llm.provider_key_manager import ProviderKeyManager
 
         assert self.provider
         return ProviderKeyManager.get_api_key(self.provider.value, self.context.config)
+
+    def get_usage_summary(self) -> dict:
+        """
+        Get a summary of usage statistics for this LLM instance.
+
+        Returns:
+            Dictionary containing usage statistics including tokens, cache metrics,
+            and context window utilization.
+        """
+        return self.usage_accumulator.get_summary()
