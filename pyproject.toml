@@ -31,16 +31,10 @@ dependencies = [
     "opentelemetry-instrumentation-mcp>=0.40.14; python_version >= '3.10' and python_version < '4.0'",
     "google-genai",
     "opentelemetry-instrumentation-google-genai>=0.2b0",
-<<<<<<< HEAD
     "tensorzero>=2025.4.7",
     "opentelemetry-instrumentation-mcp>=0.40.3",
     "qdrant_client>=1.14.2",
-||||||| 26c6c7d
-    "tensorzero>=2025.4.7",
-    "opentelemetry-instrumentation-google-genai>=0.2b0",
-=======
     "tensorzero>=2025.6.3",
->>>>>>> upstream/main
     "deprecated>=1.2.18",
     "a2a-sdk>=0.2.9",
     "email-validator>=2.2.0",
@@ -74,37 +68,6 @@ include = [
     "src/mcp_agent/**/*.yaml",
     "src/mcp_agent/**/*.yml",
     "src/mcp_agent/**/*.csv",
-<<<<<<< HEAD
-    "src/mcp_agent/**/*.txt",
-    "src/mcp_agent/**/*.example",
-    "examples/**/*.py",
-    "examples/**/*.yaml",
-    "examples/**/*.yml",
-    "examples/**/*.txt",
-    "examples/**/*.csv",
-    "examples/**/*.md",
-    "examples/**/*.css",
-    "examples/**/mount-point/*.csv",
-    "examples/workflows/short_story.txt",
-    "examples/mcp/**/*.py",
-    "examples/mcp/**/*.yaml",
-    "examples/mcp/**/*.example",
-||||||| 26c6c7d
-    "src/mcp_agent/**/*.txt",    
-    "src/mcp_agent/**/*.example",    
-    "examples/**/*.py",
-    "examples/**/*.yaml",
-    "examples/**/*.yml",
-    "examples/**/*.txt",
-    "examples/**/*.csv",
-    "examples/**/*.md",
-    "examples/**/*.css",
-    "examples/**/mount-point/*.csv",
-    "examples/workflows/short_story.txt",
-    "examples/mcp/**/*.py",
-    "examples/mcp/**/*.yaml",
-    "examples/mcp/**/*.example",
-=======
     "src/mcp_agent/**/*.txt",    
     "src/mcp_agent/**/*.example",
     "examples/**/*",
@@ -114,7 +77,6 @@ include = [
 packages = ["src/mcp_agent"]
 artifacts = [
     "src/mcp_agent/resources/examples/**/*",
->>>>>>> upstream/main
 ]
 
 [tool.pytest.ini_options]
